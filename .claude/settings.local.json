@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Test-Path \".claude-state\" -PathType Container)",
+      "Bash(if [ ! -d \".claude-state\" ])",
+      "Bash(then mkdir -p .claude-state)",
+      "Bash(else echo \"Exists\")",
+      "Bash(fi)",
+      "Bash(gh repo view:*)",
+      "Bash(if [ -f \".claude-state/project-state.json\" ])",
+      "Bash(then echo \"EXISTS\")",
+      "Bash(else echo \"NOT_FOUND\")",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(mkdir:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

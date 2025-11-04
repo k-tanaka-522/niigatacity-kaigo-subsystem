@@ -1,0 +1,68 @@
+{
+  "project": {
+    "name": null,
+    "type": null,
+    "phase": "planning",
+    "created_at": "2025-11-04T00:00:00Z",
+    "updated_at": "2025-11-04T00:00:00Z"
+  },
+  "phases": {
+    "planning": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    },
+    "requirements": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    },
+    "design": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    },
+    "implementation": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    },
+    "testing": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    },
+    "deployment": {
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "document": null
+    }
+  },
+  "requirements": {
+    "business_background": {},
+    "tech_stack": {},
+    "functional_requirements": [],
+    "non_functional_requirements": {},
+    "constraints": {}
+  },
+  "design": {
+    "architecture": null,
+    "tech_stack": {},
+    "infrastructure": {},
+    "cicd_strategy": {}
+  },
+  "implementation": {
+    "directory_structure": null,
+    "coding_standards_applied": false
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "last_command": "/init"
+  }
+}
