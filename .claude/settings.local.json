@@ -13,7 +13,9 @@
       "Bash(git init:*)",
       "Bash(git remote:*)",
       "Bash(mkdir:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: AWS infrastructure design and Terraform modules\n\n## 作成ドキュメント\n\n### 設計ドキュメント\n- インフラ要件定義書 (GCAS準拠)\n- AWS基本設計書 (マルチアカウント構成、ネットワーク、セキュリティ、コンピューティング、データ、運用、DR、コスト)\n- AWS詳細設計書 (詳細設定値、ポリシー、パラメータ、Bedrock運用自動化)\n- Terraform設計書 (ディレクトリ構成、State管理、モジュール設計、CI/CD統合)\n\n### Terraformコード\n- ディレクトリ構造作成\n- Backend設定ファイル (common, prod, staging, operations)\n- VPCモジュール完全実装\n  - Multi-AZ対応\n  - Public/Private App/Private DB/Private Cacheサブネット\n  - NAT Gateway (Single/Multi-AZ対応)\n  - VPC Flow Logs\n  - VPC Endpoints (S3, DynamoDB)\n\n## プロジェクト概要\n新潟市介護保険事業所システムのAWSインフラをTerraformで管理。\nGCAS準拠、マルチアカウント構成、高可用性、セキュリティ強化を実現。\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
