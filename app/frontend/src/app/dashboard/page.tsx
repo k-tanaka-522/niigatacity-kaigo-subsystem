@@ -2,28 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User } from '@/types';
+import MainLayout from '@/components/Layout/MainLayout';
 import { applicationsAPI } from '@/lib/api';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState({ total: 0, draft: 0, submitted: 0, approved: 0 });
+  const [stats, setStats] = useState({ total: 0, draft: 0, submitted: 0, approved: 0, rejected: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-
-    if (!token || !userData) {
-      router.push('/login');
-      return;
-    }
-
-    setUser(JSON.parse(userData));
-
-    // 統計データ取得
     fetchStats();
-  }, [router]);
+  }, []);
 
   const fetchStats = async () => {
     try {
@@ -33,140 +22,130 @@ export default function DashboardPage() {
       const draft = applications.filter((app: any) => app.status === 'draft').length;
       const submitted = applications.filter((app: any) => app.status === 'submitted').length;
       const approved = applications.filter((app: any) => app.status === 'approved').length;
+      const rejected = applications.filter((app: any) => app.status === 'rejected').length;
 
       setStats({
         total: applications.length,
         draft,
         submitted,
         approved,
+        rejected,
       });
     } catch (error) {
       console.error('Failed to fetch stats:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
+  const statsCards = [
+    { label: '全申請数', value: stats.total, icon: '📊', color: 'text-gray-900', bgColor: 'bg-gray-50' },
+    { label: '下書き', value: stats.draft, icon: '📝', color: 'text-yellow-600', bgColor: 'bg-yellow-50' },
+    { label: '提出済み', value: stats.submitted, icon: '📤', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+    { label: '承認済み', value: stats.approved, icon: '✅', color: 'text-green-600', bgColor: 'bg-green-50' },
+  ];
 
-  if (!user) {
-    return <div>読み込み中...</div>;
+  const quickActions = [
+    {
+      title: '新規申請を作成',
+      description: '新しい申請書を作成します',
+      icon: '➕',
+      href: '/applications/new',
+      primary: true,
+    },
+    {
+      title: '申請一覧を見る',
+      description: 'すべての申請を確認します',
+      icon: '📋',
+      href: '/applications',
+      primary: false,
+    },
+  ];
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </MainLayout>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <nav className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
-                新潟市介護保険事業所システム
-              </h1>
+    <MainLayout>
+      <div className="px-4 py-6 sm:px-0">
+        {/* ページヘッダー */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">ダッシュボード</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            申請の状況を確認して、新しい申請を作成できます
+          </p>
+        </div>
+
+        {/* 統計カード */}
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+          {statsCards.map((stat) => (
+            <div
+              key={stat.label}
+              className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-200 hover:shadow-md transition-shadow"
+            >
+              <div className="p-5">
+                <div className="flex items-center">
+                  <div className={`flex-shrink-0 rounded-md p-3 ${stat.bgColor}`}>
+                    <span className="text-2xl">{stat.icon}</span>
+                  </div>
+                  <div className="ml-5 w-0 flex-1">
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      {stat.label}
+                    </dt>
+                    <dd className={`mt-1 text-3xl font-semibold ${stat.color}`}>
+                      {stat.value}
+                    </dd>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-700">{user.name} さん</span>
+          ))}
+        </div>
+
+        {/* クイックアクション */}
+        <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">クイックアクション</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {quickActions.map((action) => (
               <button
-                onClick={handleLogout}
-                className="text-sm text-gray-700 hover:text-gray-900"
+                key={action.title}
+                onClick={() => router.push(action.href)}
+                className={`group relative flex items-start p-4 rounded-lg border-2 transition-all ${
+                  action.primary
+                    ? 'border-blue-600 bg-blue-50 hover:bg-blue-100'
+                    : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                }`}
               >
-                ログアウト
+                <div className="flex-shrink-0">
+                  <span className="text-3xl">{action.icon}</span>
+                </div>
+                <div className="ml-4 text-left">
+                  <h3
+                    className={`text-base font-medium ${
+                      action.primary ? 'text-blue-900' : 'text-gray-900'
+                    }`}
+                  >
+                    {action.title}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">{action.description}</p>
+                </div>
+                <div className="ml-auto flex-shrink-0">
+                  <span className="text-gray-400 group-hover:text-blue-600 transition-colors">
+                    →
+                  </span>
+                </div>
               </button>
-            </div>
+            ))}
           </div>
         </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">ダッシュボード</h2>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      全申請数
-                    </dt>
-                    <dd className="mt-1 text-3xl font-semibold text-gray-900">
-                      {stats.total}
-                    </dd>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      下書き
-                    </dt>
-                    <dd className="mt-1 text-3xl font-semibold text-yellow-600">
-                      {stats.draft}
-                    </dd>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      提出済み
-                    </dt>
-                    <dd className="mt-1 text-3xl font-semibold text-blue-600">
-                      {stats.submitted}
-                    </dd>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      承認済み
-                    </dt>
-                    <dd className="mt-1 text-3xl font-semibold text-green-600">
-                      {stats.approved}
-                    </dd>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">クイックアクション</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <button
-                onClick={() => router.push('/applications/new')}
-                className="inline-flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
-              >
-                新規申請作成
-              </button>
-              <button
-                onClick={() => router.push('/applications')}
-                className="inline-flex items-center justify-center px-4 py-3 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-              >
-                申請一覧
-              </button>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </MainLayout>
   );
 }
