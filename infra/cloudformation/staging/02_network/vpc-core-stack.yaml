@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC Core Stack for Niigata Kaigo Subsystem - Production Environment'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Environment Configuration'
+        Parameters:
+          - EnvironmentName
+          - ProjectName
+      - Label:
+          default: 'VPC Configuration'
+        Parameters:
+          - VPCCidr
+          - EnableDnsSupport
+          - EnableDnsHostnames
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+    Description: Environment name (production/staging)
+    AllowedValues:
+      - production
+      - staging
+
+  ProjectName:
+    Type: String
+    Default: niigata-kaigo
+    Description: Project name for tagging
+
+  VPCCidr:
+    Type: String
+    Default: 10.1.0.0/16
+    Description: CIDR block for the VPC
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(1[6-9]|2[0-8]))$'
+
+  EnableDnsSupport:
+    Type: String
+    Default: 'true'
+    Description: Enable DNS support in the VPC
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  EnableDnsHostnames:
+    Type: String
+    Default: 'true'
+    Description: Enable DNS hostnames in the VPC
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsSupport: !Ref EnableDnsSupport
+      EnableDnsHostnames: !Ref EnableDnsHostnames
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Owner
+          Value: admin@niigata-city.jp
+        - Key: CostCenter
+          Value: IT-Dept
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-igw'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Attach Internet Gateway to VPC
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # DHCP Options Set (デフォルト値使用、明示的に定義)
+  DHCPOptions:
+    Type: AWS::EC2::DHCPOptions
+    Properties:
+      DomainName: !Sub '${AWS::Region}.compute.internal'
+      DomainNameServers:
+        - AmazonProvidedDNS
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-dhcp-options'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Associate DHCP Options with VPC
+  VPCDHCPOptionsAssociation:
+    Type: AWS::EC2::VPCDHCPOptionsAssociation
+    Properties:
+      VpcId: !Ref VPC
+      DhcpOptionsId: !Ref DHCPOptions
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VPCId'
+
+  VPCCidr:
+    Description: VPC CIDR Block
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub '${AWS::StackName}-VPCCidr'
+
+  InternetGatewayId:
+    Description: Internet Gateway ID
+    Value: !Ref InternetGateway
+    Export:
+      Name: !Sub '${AWS::StackName}-InternetGatewayId'
+
+  DHCPOptionsId:
+    Description: DHCP Options ID
+    Value: !Ref DHCPOptions
+    Export:
+      Name: !Sub '${AWS::StackName}-DHCPOptionsId'
+
+  EnvironmentName:
+    Description: Environment Name
+    Value: !Ref EnvironmentName
+    Export:
+      Name: !Sub '${AWS::StackName}-EnvironmentName'
+
+  ProjectName:
+    Description: Project Name
+    Value: !Ref ProjectName
+    Export:
+      Name: !Sub '${AWS::StackName}-ProjectName'
