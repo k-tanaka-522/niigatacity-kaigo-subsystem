@@ -6,10 +6,10 @@ services:
     image: mysql:8.0
     container_name: niigata-kaigo-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: niigata_kaigo
-      MYSQL_USER: app_user
-      MYSQL_PASSWORD: app_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -31,10 +31,10 @@ services:
     container_name: niigata-kaigo-backend
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Server=mysql;Database=niigata_kaigo;User=app_user;Password=app_password;
-      - Jwt__Key=YourSuperSecretKeyForJWTAuthentication123!MustBeLongEnough
-      - Jwt__Issuer=NiigataKaigoAPI
-      - Jwt__Audience=NiigataKaigoClient
+      - ConnectionStrings__DefaultConnection=${DB_CONNECTION_STRING}
+      - Jwt__Key=${JWT_KEY}
+      - Jwt__Issuer=${JWT_ISSUER}
+      - Jwt__Audience=${JWT_AUDIENCE}
     ports:
       - "8080:8080"
     depends_on:
@@ -50,7 +50,7 @@ services:
       dockerfile: Dockerfile
     container_name: niigata-kaigo-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080/api
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
     ports:
       - "3000:3000"
     depends_on:

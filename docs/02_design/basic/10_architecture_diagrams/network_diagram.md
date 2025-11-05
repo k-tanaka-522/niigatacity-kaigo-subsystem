@@ -153,7 +153,7 @@ graph TB
 
     INTERNET -->|HTTPS:443<br/>HTTP:80| SG_ALB
     SG_ALB -->|TCP:8080| SG_ECS
-    SG_ECS -->|TCP:5432| SG_RDS
+    SG_ECS -->|TCP:3306| SG_RDS
     SG_ECS -->|TCP:6379| SG_CACHE
     SG_ECS -->|TCP:2049| SG_EFS
 

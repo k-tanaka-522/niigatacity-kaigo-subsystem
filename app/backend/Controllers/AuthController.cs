@@ -79,6 +79,7 @@ public class AuthController : ControllerBase
     /// ユーザー登録（管理者のみ）
     /// </summary>
     [HttpPost("register")]
+    [Authorize(Roles = "admin")]
     public async Task<ActionResult<UserDto>> Register([FromBody] RegisterRequestDto request)
     {
         try
@@ -125,9 +126,12 @@ public class AuthController : ControllerBase
 
     private string GenerateJwtToken(User user)
     {
-        var jwtKey = _configuration["Jwt:Key"] ?? "YourSuperSecretKeyForJWTAuthentication123!";
-        var jwtIssuer = _configuration["Jwt:Issuer"] ?? "NiigataKaigoAPI";
-        var jwtAudience = _configuration["Jwt:Audience"] ?? "NiigataKaigoClient";
+        var jwtKey = _configuration["Jwt:Key"]
+            ?? throw new InvalidOperationException("Jwt:Key is not configured");
+        var jwtIssuer = _configuration["Jwt:Issuer"]
+            ?? throw new InvalidOperationException("Jwt:Issuer is not configured");
+        var jwtAudience = _configuration["Jwt:Audience"]
+            ?? throw new InvalidOperationException("Jwt:Audience is not configured");
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);

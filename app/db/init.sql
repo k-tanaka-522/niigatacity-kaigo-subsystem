@@ -87,12 +87,13 @@ INSERT INTO offices (office_code, office_name, office_type, postal_code, address
 ('OFF003', '新潟市役所福祉部', '行政', '951-8550', '新潟県新潟市中央区学校町通1番町602番地1', '025-226-1269', '鈴木一郎');
 
 -- サンプルユーザー (パスワード: password123)
--- BCrypt ハッシュ: $2a$11$... は "password123" のハッシュ
+-- BCrypt ハッシュ: work factor 11で生成された正しいハッシュ (bcryptjs使用)
+-- 各ハッシュは異なるソルトを使用しているため、同じパスワードでも異なる値になります
 INSERT INTO users (email, password_hash, name, office_id, role) VALUES
-('staff1@example.com', '$2a$11$3Kk7lY3B5J8XJ8XJ8XJ8XOqQJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8', '事業所職員1', 1, 'staff'),
-('staff2@example.com', '$2a$11$3Kk7lY3B5J8XJ8XJ8XJ8XOqQJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8', '事業所職員2', 2, 'staff'),
-('admin@example.com', '$2a$11$3Kk7lY3B5J8XJ8XJ8XJ8XOqQJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8', '管理者', NULL, 'admin'),
-('city@example.com', '$2a$11$3Kk7lY3B5J8XJ8XJ8XJ8XOqQJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8XJ8', '市役所職員', 3, 'city_staff');
+('staff1@example.com', '$2b$11$eOQK3l9GwU8.CyotMuyTOe1NLaaVfjlSmZqxormbA1454jEwVBwo.', '事業所職員1', 1, 'staff'),
+('staff2@example.com', '$2b$11$oUvEmDHWD.zKcIH0W2idyejAuKvUl97N6cnnOQ0NTIpwvkw2z1T6C', '事業所職員2', 2, 'staff'),
+('admin@example.com', '$2b$11$Ebm8dr6FUMl7gPGgONKZxebtdCz2aP4fc.Cg3eeWIN3hnBPXbXd.i', '管理者', NULL, 'admin'),
+('city@example.com', '$2b$11$CjBQ/DRIIZUSQPh459TcUueizx6QB4N1vLuNFwDhgBYggTySq30PC', '市役所職員', 3, 'city_staff');
 
 -- サンプル申請データ
 INSERT INTO applications (application_number, office_id, user_id, application_type, title, content, status) VALUES

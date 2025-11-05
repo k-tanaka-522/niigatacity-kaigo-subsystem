@@ -92,7 +92,7 @@ graph TB
 **アウトバウンドルール**:
 | プロトコル | ポート | 宛先 | 説明 |
 |-----------|------|------|------|
-| TCP | 5432 | `kaigo-subsys-prod-rds-sg` | RDSへの接続 |
+| TCP | 3306 | `kaigo-subsys-prod-rds-sg` | RDSへの接続 |
 | TCP | 6379 | `kaigo-subsys-prod-elasticache-sg` | ElastiCacheへの接続 |
 | TCP | 2049 | `kaigo-subsys-prod-efs-sg` | EFSへの接続 |
 | HTTPS | 443 | 0.0.0.0/0 | 外部APIアクセス |
@@ -102,12 +102,12 @@ graph TB
 | 項目 | 値 |
 |------|-----|
 | グループ名 | `kaigo-subsys-prod-rds-sg` |
-| 説明 | RDS PostgreSQL security group |
+| 説明 | RDS MySQL security group |
 
 **インバウンドルール**:
 | プロトコル | ポート | ソース | 説明 |
 |-----------|------|--------|------|
-| TCP | 5432 | `kaigo-subsys-prod-ecs-sg` | ECSタスクからの接続 |
+| TCP | 3306 | `kaigo-subsys-prod-ecs-sg` | ECSタスクからの接続 |
 
 **アウトバウンドルール**: なし（デフォルト拒否）
 
@@ -356,7 +356,7 @@ graph TB
 
 | キー用途 | キーエイリアス | ローテーション | 使用サービス |
 |---------|--------------|--------------|-------------|
-| RDS暗号化 | `alias/kaigo-subsys-prod-rds` | 有効（年次） | RDS PostgreSQL |
+| RDS暗号化 | `alias/kaigo-subsys-prod-rds` | 有効（年次） | RDS MySQL |
 | ElastiCache暗号化 | `alias/kaigo-subsys-prod-elasticache` | 有効（年次） | ElastiCache Redis |
 | S3暗号化（アプリログ） | `alias/kaigo-subsys-prod-app-logs` | 有効（年次） | S3 |
 | S3暗号化（監査ログ） | `alias/kaigo-subsys-prod-audit-logs` | 有効（年次） | S3、CloudTrail |

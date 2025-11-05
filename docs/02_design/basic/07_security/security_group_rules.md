@@ -47,7 +47,7 @@
 
 | タイプ | プロトコル | ポート範囲 | 宛先 | 説明 |
 |--------|-----------|-----------|------|------|
-| PostgreSQL | TCP | 5432 | `kaigo-subsys-prod-rds-sg` | RDSへのデータベース接続 |
+| MySQL | TCP | 3306 | `kaigo-subsys-prod-rds-sg` | RDSへのデータベース接続 |
 | カスタムTCP | TCP | 6379 | `kaigo-subsys-prod-elasticache-sg` | ElastiCacheへのRedis接続 |
 | NFS | TCP | 2049 | `kaigo-subsys-prod-efs-sg` | EFSへのNFSマウント |
 | HTTPS | TCP | 443 | 0.0.0.0/0 | 外部APIアクセス、パッケージダウンロード |
@@ -59,13 +59,13 @@
 
 **グループ名**: `kaigo-subsys-prod-rds-sg`
 **VPC**: `kaigo-subsys-prod-vpc (10.0.0.0/16)`
-**説明**: RDS PostgreSQL security group
+**説明**: RDS MySQL security group
 
 #### インバウンドルール
 
 | タイプ | プロトコル | ポート範囲 | ソース | 説明 |
 |--------|-----------|-----------|--------|------|
-| PostgreSQL | TCP | 5432 | `kaigo-subsys-prod-ecs-sg` | ECSタスクからのデータベース接続 |
+| MySQL | TCP | 3306 | `kaigo-subsys-prod-ecs-sg` | ECSタスクからのデータベース接続 |
 
 #### アウトバウンドルール
 
@@ -166,7 +166,7 @@
 
 | タイプ | プロトコル | ポート範囲 | 宛先 | 説明 |
 |--------|-----------|-----------|------|------|
-| PostgreSQL | TCP | 5432 | `kaigo-subsys-stg-rds-sg` | RDSへのデータベース接続 |
+| MySQL | TCP | 3306 | `kaigo-subsys-stg-rds-sg` | RDSへのデータベース接続 |
 | カスタムTCP | TCP | 6379 | `kaigo-subsys-stg-elasticache-sg` | ElastiCacheへのRedis接続 |
 | NFS | TCP | 2049 | `kaigo-subsys-stg-efs-sg` | EFSへのNFSマウント |
 | HTTPS | TCP | 443 | 0.0.0.0/0 | 外部APIアクセス、パッケージダウンロード |
@@ -178,13 +178,13 @@
 
 **グループ名**: `kaigo-subsys-stg-rds-sg`
 **VPC**: `kaigo-subsys-stg-vpc (10.1.0.0/16)`
-**説明**: RDS PostgreSQL security group for staging
+**説明**: RDS MySQL security group for staging
 
 #### インバウンドルール
 
 | タイプ | プロトコル | ポート範囲 | ソース | 説明 |
 |--------|-----------|-----------|--------|------|
-| PostgreSQL | TCP | 5432 | `kaigo-subsys-stg-ecs-sg` | ECSタスクからのデータベース接続 |
+| MySQL | TCP | 3306 | `kaigo-subsys-stg-ecs-sg` | ECSタスクからのデータベース接続 |
 
 #### アウトバウンドルール
 
@@ -287,8 +287,8 @@ ECSSecurityGroup:
         Description: "ALB traffic"
     SecurityGroupEgress:
       - IpProtocol: tcp
-        FromPort: 5432
-        ToPort: 5432
+        FromPort: 3306
+        ToPort: 3306
         DestinationSecurityGroupId: !Ref RDSSecurityGroup
         Description: "RDS connection"
       - IpProtocol: tcp

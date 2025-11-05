@@ -47,15 +47,18 @@ builder.Services.AddSwaggerGen(c =>
 
 // Database Configuration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Server=localhost;Database=niigata_kaigo;User=root;Password=password;";
+    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
 
 // JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "YourSuperSecretKeyForJWTAuthentication123!";
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "NiigataKaigoAPI";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "NiigataKaigoClient";
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is not configured");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("Jwt:Issuer is not configured");
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("Jwt:Audience is not configured");
 
 builder.Services.AddAuthentication(options =>
 {
