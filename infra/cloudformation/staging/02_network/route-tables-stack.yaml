@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Route Tables Stack for Niigata Kaigo Subsystem - Staging Environment (Single NAT Gateway)'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Stack Dependencies'
+        Parameters:
+          - VPCStackName
+          - SubnetsStackName
+          - NATGatewaysStackName
+      - Label:
+          default: 'Environment Configuration'
+        Parameters:
+          - EnvironmentName
+          - ProjectName
+
+Parameters:
+  VPCStackName:
+    Type: String
+    Default: niigata-kaigo-stg-vpc-core-stack
+    Description: Name of the VPC Core stack
+
+  SubnetsStackName:
+    Type: String
+    Default: niigata-kaigo-stg-subnets-stack
+    Description: Name of the Subnets stack
+
+  NATGatewaysStackName:
+    Type: String
+    Default: niigata-kaigo-stg-nat-gateways-stack
+    Description: Name of the NAT Gateways stack
+
+  EnvironmentName:
+    Type: String
+    Default: staging
+    Description: Environment name
+
+  ProjectName:
+    Type: String
+    Default: niigata-kaigo
+    Description: Project name for tagging
+
+Resources:
+  # ========================================
+  # Public Route Table
+  # ========================================
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCStackName}-VPCId'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-rt'
+        - Key: Type
+          Value: Public
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Route to Internet Gateway
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !ImportValue
+        Fn::Sub: '${VPCStackName}-InternetGatewayId'
+
+  # Associate Public Subnets with Public Route Table
+  PublicSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PublicSubnet1aId'
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PublicSubnet1cId'
+      RouteTableId: !Ref PublicRouteTable
+
+  # ========================================
+  # Private Route Table (Shared for both AZs)
+  # ========================================
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCStackName}-VPCId'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-rt'
+        - Key: Type
+          Value: Private
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # Route to NAT Gateway 1a (shared by all private subnets)
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !ImportValue
+        Fn::Sub: '${NATGatewaysStackName}-NATGateway1aId'
+
+  # Associate Private App Subnets
+  PrivateAppSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PrivateAppSubnet1aId'
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateAppSubnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PrivateAppSubnet1cId'
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Associate Private DB Subnets
+  PrivateDBSubnet1aRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PrivateDBSubnet1aId'
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateDBSubnet1cRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !ImportValue
+        Fn::Sub: '${SubnetsStackName}-PrivateDBSubnet1cId'
+      RouteTableId: !Ref PrivateRouteTable
+
+Outputs:
+  PublicRouteTableId:
+    Description: Public Route Table ID
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicRouteTableId'
+
+  PrivateRouteTableId:
+    Description: Private Route Table ID
+    Value: !Ref PrivateRouteTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateRouteTableId'

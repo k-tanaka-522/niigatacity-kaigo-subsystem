@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application Load Balancer Stack for Niigata Kaigo Subsystem - Production Environment'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Stack Dependencies'
+        Parameters:
+          - VPCStackName
+          - SubnetsStackName
+          - SecurityGroupsStackName
+      - Label:
+          default: 'Environment Configuration'
+        Parameters:
+          - EnvironmentName
+          - ProjectName
+      - Label:
+          default: 'SSL Configuration'
+        Parameters:
+          - ACMCertificateArn
+
+Parameters:
+  VPCStackName:
+    Type: String
+    Default: niigata-kaigo-prod-vpc-core-stack
+    Description: Name of the VPC Core stack
+
+  SubnetsStackName:
+    Type: String
+    Default: niigata-kaigo-prod-subnets-stack
+    Description: Name of the Subnets stack
+
+  SecurityGroupsStackName:
+    Type: String
+    Default: niigata-kaigo-prod-security-groups-stack
+    Description: Name of the Security Groups stack
+
+  EnvironmentName:
+    Type: String
+    Default: production
+    Description: Environment name
+
+  ProjectName:
+    Type: String
+    Default: niigata-kaigo
+    Description: Project name for tagging
+
+  ACMCertificateArn:
+    Type: String
+    Default: ''
+    Description: ACM Certificate ARN for HTTPS (leave empty to use HTTP only for testing)
+
+Conditions:
+  HasACMCertificate: !Not [!Equals [!Ref ACMCertificateArn, '']]
+
+Resources:
+  # ========================================
+  # Application Load Balancer
+  # ========================================
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb'
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - !ImportValue
+          Fn::Sub: '${SubnetsStackName}-PublicSubnet1aId'
+        - !ImportValue
+          Fn::Sub: '${SubnetsStackName}-PublicSubnet1cId'
+      SecurityGroups:
+        - !ImportValue
+          Fn::Sub: '${SecurityGroupsStackName}-ALBSecurityGroupId'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alb'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ========================================
+  # Target Group
+  # ========================================
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-tg'
+      TargetType: ip
+      Protocol: HTTP
+      Port: 8080
+      VpcId: !ImportValue
+        Fn::Sub: '${VPCStackName}-VPCId'
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '86400'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-tg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ========================================
+  # HTTPS Listener (if ACM certificate is provided)
+  # ========================================
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasACMCertificate
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Protocol: HTTPS
+      Port: 443
+      Certificates:
+        - CertificateArn: !Ref ACMCertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ========================================
+  # HTTP Listener (redirect to HTTPS if certificate exists, otherwise forward)
+  # ========================================
+
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - !If
+          - HasACMCertificate
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: '443'
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref TargetGroup
+
+Outputs:
+  ApplicationLoadBalancerArn:
+    Description: Application Load Balancer ARN
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${AWS::StackName}-ALBArn'
+
+  ApplicationLoadBalancerDNSName:
+    Description: Application Load Balancer DNS Name
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALBDNSName'
+
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-TargetGroupArn'
+
+  HTTPSListenerArn:
+    Condition: HasACMCertificate
+    Description: HTTPS Listener ARN
+    Value: !Ref HTTPSListener
+    Export:
+      Name: !Sub '${AWS::StackName}-HTTPSListenerArn'
+
+  HTTPListenerArn:
+    Description: HTTP Listener ARN
+    Value: !Ref HTTPListener
+    Export:
+      Name: !Sub '${AWS::StackName}-HTTPListenerArn'
