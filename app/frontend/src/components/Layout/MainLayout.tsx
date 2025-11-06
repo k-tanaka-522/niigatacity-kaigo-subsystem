@@ -16,15 +16,25 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
+    // プロトタイプ段階: 認証チェックをスキップ
+    // const token = localStorage.getItem('token');
+    // const userData = localStorage.getItem('user');
 
-    if (!token || !userData) {
-      router.push('/login');
-      return;
-    }
+    // if (!token || !userData) {
+    //   router.push('/login');
+    //   return;
+    // }
 
-    setUser(JSON.parse(userData));
+    // ダミーユーザーをセット
+    setUser({
+      id: 1,
+      name: 'テストユーザー',
+      email: 'test@example.com',
+      role: 'staff',
+      officeName: 'テスト事業所'
+    });
+
+    // setUser(JSON.parse(userData));
   }, [router]);
 
   const handleLogout = () => {

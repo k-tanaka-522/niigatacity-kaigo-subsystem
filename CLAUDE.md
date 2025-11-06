@@ -1,6 +1,24 @@
-# {PROJECT_NAME}
+# 新潟市介護保険事業所システム
 
-{プロジェクトの目的と背景を1-2行で記述}
+新潟市介護保険事業所（430事業所、約1,300名）向けのWebアプリケーションをAWSクラウド上に構築するプロジェクト。GCAS（政府情報システムのセキュリティ評価制度）準拠。
+
+## プロジェクト情報
+
+- **予定価格**: 2億1,000万円（税込）
+- **履行期限**: 令和9年1月3日
+- **運用保守期間**: 令和9年1月4日～令和13年3月31日
+- **コンプライアンス**: GCAS準拠
+
+## 技術スタック
+
+- **クラウド**: AWS（Multi-AZ、Multi-Account）
+- **IaC**: AWS CloudFormation
+- **バックエンド**: .NET Core 9 (C#)
+- **フロントエンド**: Next.js (TypeScript)
+- **データベース**: Amazon RDS MySQL (Multi-AZ)
+- **コンピューティング**: Amazon ECS Fargate
+- **認証**: Amazon Cognito + MFA
+- **監視**: CloudWatch、CloudTrail、AWS Config
 
 ## PM役割定義
 

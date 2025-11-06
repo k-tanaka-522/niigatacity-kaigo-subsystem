@@ -1,33 +1,33 @@
 {
   "project": {
-    "name": null,
-    "type": null,
-    "phase": "planning",
+    "name": "新潟市介護保険事業所システム",
+    "type": "web-application-cloud-infrastructure",
+    "phase": "implementation",
     "created_at": "2025-11-04T00:00:00Z",
-    "updated_at": "2025-11-04T00:00:00Z"
+    "updated_at": "2025-11-07T00:00:00Z"
   },
   "phases": {
     "planning": {
-      "status": "pending",
-      "started_at": null,
-      "completed_at": null,
-      "document": null
+      "status": "completed",
+      "started_at": "2025-11-04T00:00:00Z",
+      "completed_at": "2025-11-05T00:00:00Z",
+      "document": "docs/00_RFP/"
     },
     "requirements": {
-      "status": "pending",
-      "started_at": null,
-      "completed_at": null,
-      "document": null
+      "status": "completed",
+      "started_at": "2025-11-05T00:00:00Z",
+      "completed_at": "2025-11-05T12:00:00Z",
+      "document": "docs/01_requirements/"
     },
     "design": {
-      "status": "pending",
-      "started_at": null,
-      "completed_at": null,
-      "document": null
+      "status": "completed",
+      "started_at": "2025-11-05T12:00:00Z",
+      "completed_at": "2025-11-06T00:00:00Z",
+      "document": "docs/02_design/basic/"
     },
     "implementation": {
-      "status": "pending",
-      "started_at": null,
+      "status": "in_progress",
+      "started_at": "2025-11-06T00:00:00Z",
       "completed_at": null,
       "document": null
     },
@@ -45,24 +45,83 @@
     }
   },
   "requirements": {
-    "business_background": {},
-    "tech_stack": {},
-    "functional_requirements": [],
-    "non_functional_requirements": {},
-    "constraints": {}
+    "business_background": {
+      "industry": "public-sector",
+      "sector": "healthcare-long-term-care",
+      "target_users": "介護保険事業所職員（430事業所、約1,300名）",
+      "current_issues": "介護保険事業所向けシステムのクラウド化",
+      "compliance": "GCAS（政府情報システムのセキュリティ評価制度）準拠"
+    },
+    "tech_stack": {
+      "cloud": "AWS",
+      "iac": "AWS CloudFormation",
+      "backend": ".NET Core 9 (C#)",
+      "frontend": "Next.js (TypeScript)",
+      "database": "Amazon RDS MySQL (Multi-AZ)",
+      "compute": "Amazon ECS Fargate",
+      "authentication": "Amazon Cognito + MFA",
+      "monitoring": "CloudWatch, CloudTrail, AWS Config",
+      "cicd": "GitHub Actions"
+    },
+    "functional_requirements": [
+      "ユーザー認証・認可（MFA必須）",
+      "申請管理機能",
+      "事業所管理機能",
+      "ドキュメント管理機能"
+    ],
+    "non_functional_requirements": {
+      "performance": "同時接続100名、応答時間3秒以内",
+      "availability": "稼働率99.0%以上、RTO 24時間、RPO 1時間",
+      "security": "GCAS準拠、TLS 1.3、保管時暗号化（KMS）、WAF",
+      "compliance": "GCAS、プライバシーマーク、ISMS"
+    },
+    "constraints": {
+      "budget": "2億1,000万円（税込）",
+      "timeline": "令和9年1月3日まで",
+      "region": "東京リージョン（ap-northeast-1）、DR: 大阪リージョン（ap-northeast-3）"
+    }
   },
   "design": {
-    "architecture": null,
-    "tech_stack": {},
-    "infrastructure": {},
-    "cicd_strategy": {}
+    "architecture": "Multi-Account（AWS Organizations）、ハブ&スポークモデル（Transit Gateway）、コンテナベース（ECS Fargate）",
+    "tech_stack": {
+      "iac": "AWS CloudFormation",
+      "accounts": "4アカウント（本番共通系、本番アプリ系、ステージング共通系、ステージングアプリ系）",
+      "network": "Transit Gateway、Direct Connect（100Mbps × 2回線）",
+      "compute": "ECS Fargate + ALB",
+      "database": "RDS MySQL Multi-AZ",
+      "cache": "ElastiCache Redis",
+      "storage": "S3 + CloudFront",
+      "security": "Cognito + MFA、WAF、KMS",
+      "monitoring": "CloudWatch、CloudTrail、AWS Config",
+      "backup": "AWS Backup"
+    },
+    "infrastructure": {
+      "account_structure": "マルチアカウント（4アカウント）",
+      "network_model": "ハブ&スポークモデル（Transit Gateway）",
+      "high_availability": "Multi-AZ（RDS、ALB）、Auto Scaling",
+      "disaster_recovery": "Backup & Restore（RTO: 24時間、RPO: 1時間）"
+    },
+    "cicd_strategy": {
+      "tool": "GitHub Actions",
+      "deployment_method": "CloudFormation Change Sets（dry-run必須）",
+      "environments": ["production", "staging"]
+    }
   },
   "implementation": {
-    "directory_structure": null,
-    "coding_standards_applied": false
+    "directory_structure": "docs/, infra/cloudformation/, app/backend/, app/frontend/",
+    "coding_standards_applied": true,
+    "cloudformation_templates": 14,
+    "application_structure": ".NET Core backend + Next.js frontend"
   },
   "metadata": {
     "version": "1.0.0",
-    "last_command": "/init"
+    "last_command": "/check",
+    "last_updated_by": "Claude (PM)",
+    "git_branch": "master",
+    "recent_commits": [
+      "abb34df: fix: ログイン画面のレイアウト修正",
+      "8e29756: feat: Complete application management UI implementation",
+      "087535f: Fix Critical security issues and upgrade to .NET 9"
+    ]
   }
 }
