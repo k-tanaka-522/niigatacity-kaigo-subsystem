@@ -202,6 +202,81 @@ public class ApplicationsController : ControllerBase
     }
 
     /// <summary>
+    /// 申請更新
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<ActionResult<ApplicationDto>> UpdateApplication(int id, [FromBody] CreateApplicationDto dto)
+    {
+        try
+        {
+            var application = await _context.Applications.FindAsync(id);
+            if (application == null)
+            {
+                return NotFound(new { message = "申請が見つかりません" });
+            }
+
+            if (application.Status != "draft")
+            {
+                return BadRequest(new { message = "下書き状態の申請のみ編集できます" });
+            }
+
+            application.ApplicationType = dto.ApplicationType;
+            application.Title = dto.Title;
+            application.Content = dto.Content;
+            application.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new ApplicationDto
+            {
+                Id = application.Id,
+                ApplicationNumber = application.ApplicationNumber,
+                ApplicationType = application.ApplicationType,
+                Title = application.Title,
+                Content = application.Content,
+                Status = application.Status,
+                UpdatedAt = application.UpdatedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating application {Id}", id);
+            return StatusCode(500, new { message = "申請の更新中にエラーが発生しました" });
+        }
+    }
+
+    /// <summary>
+    /// 申請削除
+    /// </summary>
+    [HttpDelete("{id}")]
+    public async Task<ActionResult> DeleteApplication(int id)
+    {
+        try
+        {
+            var application = await _context.Applications.FindAsync(id);
+            if (application == null)
+            {
+                return NotFound(new { message = "申請が見つかりません" });
+            }
+
+            if (application.Status != "draft")
+            {
+                return BadRequest(new { message = "下書き状態の申請のみ削除できます" });
+            }
+
+            _context.Applications.Remove(application);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "申請を削除しました" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting application {Id}", id);
+            return StatusCode(500, new { message = "申請の削除中にエラーが発生しました" });
+        }
+    }
+
+    /// <summary>
     /// 申請提出
     /// </summary>
     [HttpPost("{id}/submit")]

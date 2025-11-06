@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import MainLayout from '@/components/Layout/MainLayout';
 import { applicationsAPI } from '@/lib/api';
@@ -12,58 +12,90 @@ interface ApplicationForm {
   content: string;
 }
 
-export default function NewApplicationPage() {
+export default function ApplicationEditPage() {
   const router = useRouter();
+  const params = useParams();
+  const id = Number(params.id);
+
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<ApplicationForm>();
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm<ApplicationForm>();
 
-  const onSubmit = async (data: ApplicationForm, isDraft: boolean) => {
+  useEffect(() => {
+    fetchApplication();
+  }, [id]);
+
+  const fetchApplication = async () => {
+    try {
+      const response = await applicationsAPI.getById(id);
+      const app = response.data;
+
+      // Check if it's editable
+      if (app.status !== 'draft') {
+        alert('下書き状態の申請のみ編集できます');
+        router.push(`/applications/${id}`);
+        return;
+      }
+
+      // Set form values
+      setValue('applicationType', app.applicationType);
+      setValue('title', app.title);
+      setValue('content', app.content || '');
+    } catch (error) {
+      console.error('Failed to fetch application:', error);
+      alert('申請の取得に失敗しました');
+      router.push('/applications');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSubmit = async (data: ApplicationForm) => {
     setSubmitting(true);
     try {
-      const response = await applicationsAPI.create({
-        ...data,
-        status: isDraft ? 'draft' : 'submitted',
-      });
-
-      const message = isDraft ? '下書きとして保存しました' : '申請を提出しました';
-      alert(message);
-
-      router.push(`/applications/${response.data.id}`);
+      await applicationsAPI.update(id, data);
+      alert('申請を更新しました');
+      router.push(`/applications/${id}`);
     } catch (error: any) {
-      alert(error.response?.data?.message || '申請の作成に失敗しました');
+      alert(error.response?.data?.message || '更新に失敗しました');
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleCancel = () => {
-    if (confirm('入力内容を破棄してもよろしいですか?')) {
-      router.push('/applications');
+    if (confirm('編集内容を破棄してもよろしいですか?')) {
+      router.push(`/applications/${id}`);
     }
   };
+
+  if (loading) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout>
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-6">
           <button
-            onClick={() => router.push('/applications')}
+            onClick={() => router.push(`/applications/${id}`)}
             className="text-gray-600 hover:text-gray-900 flex items-center"
           >
-            ← 一覧に戻る
+            ← 詳細に戻る
           </button>
         </div>
 
         <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">新規申請作成</h1>
-            <p className="mt-2 text-sm text-gray-600">
-              必要事項を入力して、下書き保存または提出してください
-            </p>
-          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-6">申請を編集</h1>
 
-          <form className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div>
               <label htmlFor="applicationType" className="block text-sm font-medium text-gray-700 mb-2">
                 申請種別 <span className="text-red-600">*</span>
@@ -105,18 +137,10 @@ export default function NewApplicationPage() {
               </label>
               <textarea
                 {...register('content')}
-                rows={12}
+                rows={10}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="申請の詳細内容を記載してください...&#10;&#10;例:&#10;事業所名: ○○介護サービスセンター&#10;所在地: 新潟市○○区○○町○丁目○番○号&#10;サービス種類: 訪問介護&#10;開始予定日: 令和○年○月○日"
+                placeholder="申請の詳細内容を記載してください..."
               />
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">保存方法を選択してください</h3>
-              <ul className="text-sm text-gray-600 space-y-1 mb-3">
-                <li>・下書き保存: 後で編集・提出が可能です</li>
-                <li>・提出: 市役所に申請が送信されます（提出後は編集できません）</li>
-              </ul>
             </div>
 
             <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
@@ -129,20 +153,11 @@ export default function NewApplicationPage() {
                 キャンセル
               </button>
               <button
-                type="button"
-                onClick={handleSubmit((data) => onSubmit(data, true))}
-                disabled={submitting}
-                className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-              >
-                {submitting ? '保存中...' : '下書き保存'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit((data) => onSubmit(data, false))}
+                type="submit"
                 disabled={submitting}
                 className="px-6 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
               >
-                {submitting ? '提出中...' : '提出する'}
+                {submitting ? '保存中...' : '保存'}
               </button>
             </div>
           </form>

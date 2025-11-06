@@ -61,7 +61,17 @@ export const applicationsAPI = {
     applicationType: string;
     title: string;
     content?: string;
+    status?: string;
   }) => api.post('/applications', data),
+
+  update: (id: number, data: {
+    applicationType?: string;
+    title?: string;
+    content?: string;
+  }) => api.put(`/applications/${id}`, data),
+
+  delete: (id: number) =>
+    api.delete(`/applications/${id}`),
 
   submit: (id: number) =>
     api.post(`/applications/${id}/submit`),
