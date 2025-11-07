@@ -1,0 +1,192 @@
+name: Infrastructure CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'infra/cloudformation/**'
+      - '.github/workflows/infra-deploy.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'infra/cloudformation/**'
+
+permissions:
+  id-token: write  # OIDC認証に必要
+  contents: read
+
+env:
+  AWS_REGION: 'ap-northeast-1'
+  PROJECT_NAME: 'niigata-kaigo'
+
+jobs:
+  validate:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Lint CloudFormation templates
+        run: |
+          cfn-lint infra/cloudformation/**/*.yaml --ignore-checks W
+
+      - name: Validate CloudFormation templates
+        run: |
+          for template in infra/cloudformation/production/*/*.yaml infra/cloudformation/staging/*/*.yaml; do
+            if [ -f "$template" ]; then
+              echo "Validating $template"
+              aws cloudformation validate-template --template-body file://$template > /dev/null
+            fi
+          done
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: validate
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy VPC Stack
+        run: |
+          # VPCスタック作成後に有効化
+          echo "VPCスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 02_network vpc-core-stack
+
+      - name: Deploy Cognito Stack
+        run: |
+          # Cognitoスタック作成後に有効化
+          echo "Cognitoスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 03_security cognito-stack
+
+      - name: Deploy S3 + CloudFront Stack
+        run: |
+          # S3/CloudFrontスタック作成後に有効化
+          echo "S3/CloudFrontスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 05_storage s3-cloudfront-stack
+
+      - name: Deploy ECR Stack
+        run: |
+          # ECRスタック作成後に有効化
+          echo "ECRスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 06_compute ecr-stack
+
+      - name: Deploy ECS + ALB Stack
+        run: |
+          # ECS/ALBスタック作成後に有効化
+          echo "ECS/ALBスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 06_compute ecs-alb-stack
+
+      - name: Deploy RDS Stack
+        run: |
+          # RDSスタック作成後に有効化
+          echo "RDSスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 07_database rds-mysql-stack
+
+      - name: Deploy Client VPN Stack
+        run: |
+          # Client VPNスタック作成後に有効化
+          echo "Client VPNスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh staging 02_network client-vpn-stack
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: staging"
+
+  deploy-production:
+    name: Deploy to Production
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: production-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy VPC Stack
+        run: |
+          # VPCスタック作成後に有効化
+          echo "VPCスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 02_network vpc-core-stack
+
+      - name: Deploy Cognito Stack
+        run: |
+          # Cognitoスタック作成後に有効化
+          echo "Cognitoスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 03_security cognito-stack
+
+      - name: Deploy S3 + CloudFront Stack
+        run: |
+          # S3/CloudFrontスタック作成後に有効化
+          echo "S3/CloudFrontスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 05_storage s3-cloudfront-stack
+
+      - name: Deploy ECR Stack
+        run: |
+          # ECRスタック作成後に有効化
+          echo "ECRスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 06_compute ecr-stack
+
+      - name: Deploy ECS + ALB Stack
+        run: |
+          # ECS/ALBスタック作成後に有効化
+          echo "ECS/ALBスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 06_compute ecs-alb-stack
+
+      - name: Deploy RDS Stack
+        run: |
+          # RDSスタック作成後に有効化
+          echo "RDSスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 07_database rds-mysql-stack
+
+      - name: Deploy Client VPN Stack
+        run: |
+          # Client VPNスタック作成後に有効化
+          echo "Client VPNスタックデプロイ（スタック作成後に有効化）"
+          # bash infra/cloudformation/scripts/deploy.sh production 02_network client-vpn-stack
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: production"

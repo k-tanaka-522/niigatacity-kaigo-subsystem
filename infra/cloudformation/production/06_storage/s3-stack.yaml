@@ -127,6 +127,13 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: GOVERNANCE
+            Days: 365
       LifecycleConfiguration:
         Rules:
           - Id: TransitionToGlacier
@@ -137,13 +144,6 @@ Resources:
           - Id: DeleteOldBackups
             Status: Enabled
             ExpirationInDays: 2555  # 7 years
-      ObjectLockEnabled: true
-      ObjectLockConfiguration:
-        ObjectLockEnabled: Enabled
-        Rule:
-          DefaultRetention:
-            Mode: GOVERNANCE
-            Days: 365
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-backup'

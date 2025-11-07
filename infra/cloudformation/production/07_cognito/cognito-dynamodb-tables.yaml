@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito DynamoDB Tables for Login Attempts and MFA Backup Codes'
+
+# ==============================================================================
+# Parameters
+# ==============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: kaigo-subsys
+    Description: Project name for resource naming
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - prod
+      - stg
+    Description: Environment name
+
+# ==============================================================================
+# Resources
+# ==============================================================================
+Resources:
+  # ------------------------------------------------------------------------------
+  # ログイン試行管理テーブル
+  # 目的: アカウントロックアウト管理、ログイン試行回数記録
+  # 影響: PreAuthentication Lambda から参照・更新される
+  # 前提: TTL有効化でロックアウト期限切れデータを自動削除
+  # ------------------------------------------------------------------------------
+  LoginAttemptsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-${Environment}-login-attempts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: lockedUntil
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-login-attempts
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ------------------------------------------------------------------------------
+  # MFA バックアップコード管理テーブル
+  # 目的: MFAデバイス喪失時のバックアップコード管理
+  # 影響: PostConfirmation Lambda から作成、ログイン時に検証
+  # 前提: バックアップコードは10個生成、1回のみ使用可能
+  # ------------------------------------------------------------------------------
+  MfaBackupCodesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-${Environment}-mfa-backup-codes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: code
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-mfa-backup-codes
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+# ==============================================================================
+# Outputs
+# ==============================================================================
+Outputs:
+  LoginAttemptsTableName:
+    Description: Login Attempts DynamoDB Table Name
+    Value: !Ref LoginAttemptsTable
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-LoginAttemptsTableName
+
+  LoginAttemptsTableArn:
+    Description: Login Attempts DynamoDB Table ARN
+    Value: !GetAtt LoginAttemptsTable.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-LoginAttemptsTableArn
+
+  MfaBackupCodesTableName:
+    Description: MFA Backup Codes DynamoDB Table Name
+    Value: !Ref MfaBackupCodesTable
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-MfaBackupCodesTableName
+
+  MfaBackupCodesTableArn:
+    Description: MFA Backup Codes DynamoDB Table ARN
+    Value: !GetAtt MfaBackupCodesTable.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-MfaBackupCodesTableArn

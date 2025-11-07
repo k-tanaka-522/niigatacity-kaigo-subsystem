@@ -1,0 +1,66 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "kaigo-subsys"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "stg"
+  },
+  {
+    "ParameterKey": "UserPoolName",
+    "ParameterValue": "kaigo-subsys-stg-user-pool"
+  },
+  {
+    "ParameterKey": "UserPoolDomain",
+    "ParameterValue": "kaigo-subsys-stg"
+  },
+  {
+    "ParameterKey": "MfaConfiguration",
+    "ParameterValue": "OPTIONAL"
+  },
+  {
+    "ParameterKey": "PasswordMinLength",
+    "ParameterValue": "8"
+  },
+  {
+    "ParameterKey": "PasswordRequireUppercase",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireLowercase",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireNumbers",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireSymbols",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "TemporaryPasswordValidityDays",
+    "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "AccessTokenValidity",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "IdTokenValidity",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "RefreshTokenValidity",
+    "ParameterValue": "30"
+  },
+  {
+    "ParameterKey": "IdentityPoolName",
+    "ParameterValue": "kaigo-subsys-stg-identity-pool"
+  },
+  {
+    "ParameterKey": "AllowUnauthenticatedIdentities",
+    "ParameterValue": "false"
+  }
+]

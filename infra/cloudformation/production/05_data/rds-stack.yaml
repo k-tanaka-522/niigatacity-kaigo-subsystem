@@ -10,6 +10,7 @@ Metadata:
           - VPCStackName
           - SubnetsStackName
           - SecurityGroupsStackName
+          - KMSStackName
       - Label:
           default: 'Environment Configuration'
         Parameters:
@@ -43,6 +44,11 @@ Parameters:
     Type: String
     Default: niigata-kaigo-prod-security-groups-stack
     Description: Name of the Security Groups stack
+
+  KMSStackName:
+    Type: String
+    Default: niigata-kaigo-prod-kms-stack
+    Description: Name of the KMS stack
 
   EnvironmentName:
     Type: String
@@ -190,6 +196,8 @@ Resources:
       AllocatedStorage: !Ref DBAllocatedStorage
       StorageType: gp3
       StorageEncrypted: true
+      KmsKeyId:
+        Fn::ImportValue: !Sub '${KMSStackName}-RDSKeyId'
       Iops: 3000
       DBName: !Ref DBName
       MasterUsername: !Ref DBMasterUsername
