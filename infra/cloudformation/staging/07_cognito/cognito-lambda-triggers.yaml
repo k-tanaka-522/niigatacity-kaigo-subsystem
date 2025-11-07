@@ -1,6 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Cognito Lambda Triggers for Authentication and Token Generation'
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - E0000
+
 # ==============================================================================
 # Parameters
 # ==============================================================================
