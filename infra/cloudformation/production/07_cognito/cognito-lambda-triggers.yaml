@@ -442,7 +442,7 @@ Resources:
                 event.response.emailMessage = `
 【新潟市介護保険事業所システム】
 
-パスワード再設定用の確認コード: ${event.request.codeParameter}
+パスワード再設定用の確認コード - ${event.request.codeParameter}
 
 このコードを15分以内に入力してください。
 
@@ -457,12 +457,12 @@ Resources:
 
 アカウントが作成されました。
 
-ユーザー名: ${event.userName}
-一時パスワード: ${event.request.codeParameter}
+ユーザー名 - ${event.userName}
+一時パスワード - ${event.request.codeParameter}
 
 初回ログイン時にパスワードを変更してください。
 
-ログインURL: https://kaigo-subsys-${process.env.ENVIRONMENT}.auth.ap-northeast-1.amazoncognito.com
+ログインURL - https://kaigo-subsys-${process.env.ENVIRONMENT}.auth.ap-northeast-1.amazoncognito.com
                 `;
               }
 
@@ -471,7 +471,7 @@ Resources:
                 event.response.emailMessage = `
 【新潟市介護保険事業所システム】
 
-確認コード: ${event.request.codeParameter}
+確認コード - ${event.request.codeParameter}
 
 このコードを15分以内に入力してください。
                 `;
