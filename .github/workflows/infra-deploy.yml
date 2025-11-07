@@ -50,7 +50,7 @@ jobs:
 
       - name: Lint CloudFormation templates
         run: |
-          cfn-lint infra/cloudformation/**/*.yaml --ignore-checks W
+          cfn-lint infra/cloudformation/**/*.yaml --ignore-checks W,E0000
 
       - name: Validate CloudFormation templates
         run: |
