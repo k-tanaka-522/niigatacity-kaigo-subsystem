@@ -167,7 +167,7 @@ Resources:
 
               return event;
             } catch (error) {
-              console.error('PreAuthentication error:', error);
+              console.error('PreAuthentication error - ', error);
               throw error;
             }
           };
@@ -240,7 +240,7 @@ Resources:
 
               return event;
             } catch (error) {
-              console.error('PostAuthentication error:', error);
+              console.error('PostAuthentication error - ', error);
               throw error;
             }
           };
@@ -332,7 +332,7 @@ Resources:
 
               return event;
             } catch (error) {
-              console.error('PostConfirmation error:', error);
+              console.error('PostConfirmation error - ', error);
               throw error;
             }
           };
@@ -395,7 +395,7 @@ Resources:
 
               return event;
             } catch (error) {
-              console.error('PreTokenGeneration error:', error);
+              console.error('PreTokenGeneration error - ', error);
               throw error;
             }
           };
@@ -479,7 +479,7 @@ Resources:
 
               return event;
             } catch (error) {
-              console.error('CustomMessage error:', error);
+              console.error('CustomMessage error - ', error);
               throw error;
             }
           };
