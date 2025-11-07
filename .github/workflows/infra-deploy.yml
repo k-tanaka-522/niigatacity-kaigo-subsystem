@@ -16,6 +16,7 @@ on:
       - develop
     paths:
       - 'infra/cloudformation/**'
+  workflow_dispatch:
 
 permissions:
   id-token: write  # OIDC認証に必要
