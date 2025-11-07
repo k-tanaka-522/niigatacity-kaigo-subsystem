@@ -445,42 +445,27 @@ Resources:
             try {
               if (event.triggerSource === 'CustomMessage_ForgotPassword') {
                 event.response.emailSubject = '【新潟市介護保険事業所システム】パスワード再設定';
-                event.response.emailMessage = `
-【新潟市介護保険事業所システム】
-
-パスワード再設定用の確認コード - ${event.request.codeParameter}
-
-このコードを15分以内に入力してください。
-
-このメールに心当たりがない場合は、無視してください。
-                `;
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  'パスワード再設定用の確認コード - ' + event.request.codeParameter + '\n\n' +
+                  'このコードを15分以内に入力してください。\n\n' +
+                  'このメールに心当たりがない場合は、無視してください。';
               }
 
               if (event.triggerSource === 'CustomMessage_AdminCreateUser') {
                 event.response.emailSubject = '【新潟市介護保険事業所システム】アカウント作成';
-                event.response.emailMessage = `
-【新潟市介護保険事業所システム】
-
-アカウントが作成されました。
-
-ユーザー名 - ${event.userName}
-一時パスワード - ${event.request.codeParameter}
-
-初回ログイン時にパスワードを変更してください。
-
-ログインURL - https://kaigo-subsys-${process.env.ENVIRONMENT}.auth.ap-northeast-1.amazoncognito.com
-                `;
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  'アカウントが作成されました。\n\n' +
+                  'ユーザー名 - ' + event.userName + '\n' +
+                  '一時パスワード - ' + event.request.codeParameter + '\n\n' +
+                  '初回ログイン時にパスワードを変更してください。\n\n' +
+                  'ログインURL - https://kaigo-subsys-' + process.env.ENVIRONMENT + '.auth.ap-northeast-1.amazoncognito.com';
               }
 
               if (event.triggerSource === 'CustomMessage_ResendCode') {
                 event.response.emailSubject = '【新潟市介護保険事業所システム】確認コード再送';
-                event.response.emailMessage = `
-【新潟市介護保険事業所システム】
-
-確認コード - ${event.request.codeParameter}
-
-このコードを15分以内に入力してください。
-                `;
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  '確認コード - ' + event.request.codeParameter + '\n\n' +
+                  'このコードを15分以内に入力してください。';
               }
 
               return event;
