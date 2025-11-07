@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "production"
+  },
+  {
+    "ParameterKey": "DeploymentMode",
+    "ParameterValue": "single-account"
+  },
+  {
+    "ParameterKey": "OrganizationId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "RecordingFrequency",
+    "ParameterValue": "CONTINUOUS"
+  },
+  {
+    "ParameterKey": "EnableAllRegions",
+    "ParameterValue": "true"
+  }
+]

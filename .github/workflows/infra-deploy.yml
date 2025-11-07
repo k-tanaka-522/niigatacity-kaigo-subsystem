@@ -77,6 +77,16 @@ jobs:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Deploy CloudTrail Stack
+        run: |
+          echo "CloudTrailスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 01_audit cloudtrail-stack <<< "yes"
+
+      - name: Deploy AWS Config Stack
+        run: |
+          echo "AWS Configスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 01_audit aws-config-stack <<< "yes"
+
       - name: Deploy VPC Stack
         run: |
           # VPCスタック作成後に有効化
@@ -142,6 +152,16 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy CloudTrail Stack
+        run: |
+          echo "CloudTrailスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh production 01_audit cloudtrail-stack <<< "yes"
+
+      - name: Deploy AWS Config Stack
+        run: |
+          echo "AWS Configスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh production 01_audit aws-config-stack <<< "yes"
 
       - name: Deploy VPC Stack
         run: |

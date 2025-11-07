@@ -1,0 +1,38 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "DeploymentMode",
+    "ParameterValue": "single-account"
+  },
+  {
+    "ParameterKey": "OrganizationId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ManagementAccountId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "EnableLogFileValidation",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "IncludeGlobalServiceEvents",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "IsMultiRegionTrail",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableInsightSelectors",
+    "ParameterValue": "false"
+  }
+]
