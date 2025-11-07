@@ -220,7 +220,7 @@ Resources:
     Type: AWS::Config::ConfigurationRecorder
     Properties:
       Name: !Sub '${ProjectName}-${EnvironmentName}-config-recorder'
-      RoleArn: !GetAtt ConfigRole.Arn
+      RoleARN: !GetAtt ConfigRole.Arn
       RecordingGroup:
         AllSupported: true
         IncludeGlobalResourceTypes: true
