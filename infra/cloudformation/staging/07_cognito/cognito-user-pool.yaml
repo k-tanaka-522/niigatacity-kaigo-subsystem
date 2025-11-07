@@ -271,7 +271,7 @@ Resources:
   # 影響: ログイン画面のURLが決まる
   # 前提: カスタムドメインは将来的に検討
   # ------------------------------------------------------------------------------
-  UserPoolDomain:
+  CognitoUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
       Domain: !Ref UserPoolDomain
