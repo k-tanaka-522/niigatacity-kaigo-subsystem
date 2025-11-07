@@ -92,11 +92,13 @@ fi
 
 # Check if stack exists
 print_info "Checking if stack exists..."
+set +e  # Temporarily disable exit on error
 aws cloudformation describe-stacks \
     --stack-name $FULL_STACK_NAME \
     --region $REGION > /dev/null 2>&1
 
 STACK_EXISTS=$?
+set -e  # Re-enable exit on error
 
 # Create Change Set name with timestamp
 CHANGE_SET_NAME="${FULL_STACK_NAME}-$(date +%Y%m%d%H%M%S)"
