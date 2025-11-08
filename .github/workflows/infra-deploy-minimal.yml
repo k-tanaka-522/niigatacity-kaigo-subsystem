@@ -1,0 +1,73 @@
+name: Infrastructure Minimal Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      stack:
+        description: 'Stack to deploy'
+        required: true
+        type: choice
+        options:
+          - vpc-core-stack
+          - subnets-stack
+          - nat-gateways-stack
+          - route-tables-stack
+
+permissions:
+  id-token: write  # OIDC認証に必要
+  contents: read
+
+env:
+  AWS_REGION: 'ap-northeast-1'
+  PROJECT_NAME: 'niigata-kaigo'
+
+jobs:
+  deploy-single-stack:
+    name: Deploy Single Stack (Minimal Test)
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Display deployment info
+        run: |
+          echo "========================================="
+          echo "Minimal Stack Deployment Test"
+          echo "========================================="
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Stack:       ${{ github.event.inputs.stack }}"
+          echo "Region:      ${{ env.AWS_REGION }}"
+          echo "========================================="
+
+      - name: Deploy Stack
+        run: |
+          echo "Deploying ${{ github.event.inputs.stack }} to ${{ github.event.inputs.environment }}..."
+          bash infra/cloudformation/scripts/deploy.sh \
+            ${{ github.event.inputs.environment }} \
+            02_network \
+            ${{ github.event.inputs.stack }} <<< "yes"
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "========================================="
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Stack: ${{ github.event.inputs.stack }}"
+          echo "========================================="
