@@ -1,0 +1,71 @@
+# CODEOWNERS - チーム責任分担
+
+# ============================================================
+# デフォルト（全ファイル）
+# ============================================================
+# プロジェクトの変更は基本的に両チームで共有
+* @infra-team @app-team
+
+# ============================================================
+# 全体設計（両チームレビュー必須）
+# ============================================================
+/docs/00_RFP/ @infra-team @app-team
+/docs/01_requirements/ @infra-team @app-team
+/docs/02_設計/基本設計/00_全体/ @infra-team @app-team
+
+# ============================================================
+# インフラチーム担当
+# ============================================================
+
+# インフラ設計ドキュメント
+/docs/02_設計/基本設計/10_インフラ/ @infra-team
+
+# CloudFormation テンプレート
+/infra/cloudformation/ @infra-team
+
+# インフラ用スクリプト
+/scripts/ @infra-team
+
+# インフラ用GitHub Actions
+/.github/workflows/infra-*.yml @infra-team
+
+# ============================================================
+# アプリチーム担当
+# ============================================================
+
+# アプリ設計ドキュメント
+/docs/02_設計/基本設計/20_アプリケーション/ @app-team
+
+# バックエンドコード (.NET Core 9 C#)
+/app/backend/ @app-team
+
+# フロントエンドコード (Next.js TypeScript)
+/app/frontend/ @app-team
+
+# アプリ用GitHub Actions
+/.github/workflows/app-*.yml @app-team
+
+# ============================================================
+# 特別な承認ルール
+# ============================================================
+
+# プロジェクト設定（両チームレビュー必須）
+/.claude/ @infra-team @app-team
+/.claude-state/ @infra-team @app-team
+/CLAUDE.md @infra-team @app-team
+/README.md @infra-team @app-team
+
+# GitHub設定（両チームレビュー必須）
+/.github/CODEOWNERS @infra-team @app-team
+
+# ============================================================
+# 注意事項
+# ============================================================
+# - @infra-team: インフラチームのGitHub Team
+# - @app-team: アプリチームのGitHub Team
+#
+# GitHub上で以下のTeamを作成してください:
+# 1. Settings → Teams → New team → "infra-team"
+# 2. Settings → Teams → New team → "app-team"
+#
+# そして、各メンバーをTeamに追加してください。

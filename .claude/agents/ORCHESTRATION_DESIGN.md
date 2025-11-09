@@ -823,7 +823,7 @@ Task: 機能実装
 入力:
 - 基本設計書: docs/03_基本設計書.md
 - 実装対象: [具体的な機能名]
-- 技術標準: .claude/docs/40_standards/42_typescript.md
+- 技術標準: .claude/docs/40_standards/41_app/languages/typescript.md
 
 期待する出力:
 1. 実装コード（src/）

@@ -17,6 +17,25 @@ on:
     paths:
       - 'infra/cloudformation/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      phase:
+        description: 'Phase to deploy'
+        required: true
+        type: choice
+        options:
+          - phase1
+          - phase2
+          - phase3
+          - phase4
+          - phase5
+          - all
 
 permissions:
   id-token: write  # OIDC認証に必要
@@ -62,8 +81,9 @@ jobs:
             fi
           done
 
-  deploy-staging:
-    name: Deploy to Staging
+  # Phase 1: 監査・ネットワーク基盤
+  deploy-staging-phase1:
+    name: Deploy Phase 1 to Staging (Audit & Network)
     needs: validate
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -90,54 +110,188 @@ jobs:
           echo "AWS Configスタックデプロイ"
           bash infra/cloudformation/scripts/deploy.sh staging 01_audit aws-config-stack <<< "yes"
 
-      - name: Deploy VPC Stack
+      - name: Deploy VPC Core Stack
         run: |
-          # VPCスタック作成後に有効化
-          echo "VPCスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 02_network vpc-core-stack
+          echo "VPC Coreスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 02_network vpc-core-stack <<< "yes"
 
-      - name: Deploy Cognito Stack
+      - name: Deploy Subnets Stack
         run: |
-          # Cognitoスタック作成後に有効化
-          echo "Cognitoスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 03_security cognito-stack
+          echo "Subnetsスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 02_network subnets-stack <<< "yes"
 
-      - name: Deploy S3 + CloudFront Stack
+      - name: Deploy NAT Gateways Stack
         run: |
-          # S3/CloudFrontスタック作成後に有効化
-          echo "S3/CloudFrontスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 05_storage s3-cloudfront-stack
+          echo "NAT Gatewaysスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 02_network nat-gateways-stack <<< "yes"
 
-      - name: Deploy ECR Stack
+      - name: Deploy Route Tables Stack
         run: |
-          # ECRスタック作成後に有効化
-          echo "ECRスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 06_compute ecr-stack
-
-      - name: Deploy ECS + ALB Stack
-        run: |
-          # ECS/ALBスタック作成後に有効化
-          echo "ECS/ALBスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 06_compute ecs-alb-stack
-
-      - name: Deploy RDS Stack
-        run: |
-          # RDSスタック作成後に有効化
-          echo "RDSスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 07_database rds-mysql-stack
-
-      - name: Deploy Client VPN Stack
-        run: |
-          # Client VPNスタック作成後に有効化
-          echo "Client VPNスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh staging 02_network client-vpn-stack
+          echo "Route Tablesスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 02_network route-tables-stack <<< "yes"
 
       - name: Deployment notification
         if: always()
         run: |
           echo "Deployment status: ${{ job.status }}"
           echo "Environment: staging"
+          echo "Phase: Phase 1 (Audit & Network)"
 
+  # Phase 2: セキュリティ
+  deploy-staging-phase2:
+    name: Deploy Phase 2 to Staging (Security)
+    needs: deploy-staging-phase1
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy KMS Stack
+        run: |
+          echo "KMSスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 03_security kms-stack <<< "yes"
+
+      - name: Deploy Security Groups Stack
+        run: |
+          echo "Security Groupsスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 03_security security-groups-stack <<< "yes"
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: staging"
+          echo "Phase: Phase 2 (Security)"
+
+  # Phase 3: データ層
+  deploy-staging-phase3:
+    name: Deploy Phase 3 to Staging (Data)
+    needs: deploy-staging-phase2
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy RDS Stack
+        run: |
+          echo "RDSスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 05_data rds-stack <<< "yes"
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: staging"
+          echo "Phase: Phase 3 (Data)"
+
+  # Phase 4: コンピューティング
+  deploy-staging-phase4:
+    name: Deploy Phase 4 to Staging (Compute)
+    needs: deploy-staging-phase2
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy ALB Stack
+        run: |
+          echo "ALBスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 04_compute alb-stack <<< "yes"
+
+      - name: Deploy ECS Stack
+        run: |
+          echo "ECSスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 04_compute ecs-stack <<< "yes"
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: staging"
+          echo "Phase: Phase 4 (Compute)"
+
+  # Phase 5: ストレージ・認証
+  deploy-staging-phase5:
+    name: Deploy Phase 5 to Staging (Storage & Auth)
+    needs: deploy-staging-phase2
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy S3 Stack
+        run: |
+          echo "S3スタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 06_storage s3-stack <<< "yes"
+
+      - name: Deploy Cognito User Pool
+        run: |
+          echo "Cognito User Poolスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 07_cognito cognito-user-pool <<< "yes"
+
+      - name: Deploy Cognito Identity Pool
+        run: |
+          echo "Cognito Identity Poolスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 07_cognito cognito-identity-pool <<< "yes"
+
+      - name: Deploy Cognito DynamoDB Tables
+        run: |
+          echo "Cognito DynamoDB Tablesスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 07_cognito cognito-dynamodb-tables <<< "yes"
+
+      - name: Deploy Cognito Lambda Triggers
+        run: |
+          echo "Cognito Lambda Triggersスタックデプロイ"
+          bash infra/cloudformation/scripts/deploy.sh staging 07_cognito cognito-lambda-triggers <<< "yes"
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: staging"
+          echo "Phase: Phase 5 (Storage & Auth)"
+
+  # Production deployment (manual trigger only)
   deploy-production:
     name: Deploy to Production
     needs: validate
@@ -156,60 +310,82 @@ jobs:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy CloudTrail Stack
+      - name: Determine phase to deploy
+        id: determine-phase
         run: |
-          echo "CloudTrailスタックデプロイ"
-          bash infra/cloudformation/scripts/deploy.sh production 01_audit cloudtrail-stack <<< "yes"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            PHASE="${{ github.event.inputs.phase }}"
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            # Default to phase1 for push events
+            PHASE="phase1"
+            ENV="production"
+          fi
+          echo "phase=$PHASE" >> $GITHUB_OUTPUT
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
 
-      - name: Deploy AWS Config Stack
+      - name: Deploy Phase
         run: |
-          echo "AWS Configスタックデプロイ"
-          bash infra/cloudformation/scripts/deploy.sh production 01_audit aws-config-stack <<< "yes"
+          PHASE="${{ steps.determine-phase.outputs.phase }}"
+          ENV="${{ steps.determine-phase.outputs.environment }}"
 
-      - name: Deploy VPC Stack
-        run: |
-          # VPCスタック作成後に有効化
-          echo "VPCスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 02_network vpc-core-stack
-
-      - name: Deploy Cognito Stack
-        run: |
-          # Cognitoスタック作成後に有効化
-          echo "Cognitoスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 03_security cognito-stack
-
-      - name: Deploy S3 + CloudFront Stack
-        run: |
-          # S3/CloudFrontスタック作成後に有効化
-          echo "S3/CloudFrontスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 05_storage s3-cloudfront-stack
-
-      - name: Deploy ECR Stack
-        run: |
-          # ECRスタック作成後に有効化
-          echo "ECRスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 06_compute ecr-stack
-
-      - name: Deploy ECS + ALB Stack
-        run: |
-          # ECS/ALBスタック作成後に有効化
-          echo "ECS/ALBスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 06_compute ecs-alb-stack
-
-      - name: Deploy RDS Stack
-        run: |
-          # RDSスタック作成後に有効化
-          echo "RDSスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 07_database rds-mysql-stack
-
-      - name: Deploy Client VPN Stack
-        run: |
-          # Client VPNスタック作成後に有効化
-          echo "Client VPNスタックデプロイ（スタック作成後に有効化）"
-          # bash infra/cloudformation/scripts/deploy.sh production 02_network client-vpn-stack
+          if [ "$PHASE" == "all" ]; then
+            echo "Deploying all phases in order..."
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase1
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase2
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase3
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase4
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase5
+          else
+            echo "Deploying $PHASE to $ENV..."
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV $PHASE
+          fi
 
       - name: Deployment notification
         if: always()
         run: |
           echo "Deployment status: ${{ job.status }}"
-          echo "Environment: production"
+          echo "Environment: ${{ steps.determine-phase.outputs.environment }}"
+          echo "Phase: ${{ steps.determine-phase.outputs.phase }}"
+
+  # Manual workflow dispatch handler
+  deploy-manual:
+    name: Manual Deployment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Phase
+        run: |
+          PHASE="${{ github.event.inputs.phase }}"
+          ENV="${{ github.event.inputs.environment }}"
+
+          if [ "$PHASE" == "all" ]; then
+            echo "Deploying all phases in order..."
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase1
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase2
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase3
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase4
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV phase5
+          else
+            echo "Deploying $PHASE to $ENV..."
+            bash infra/cloudformation/scripts/deploy-phase.sh $ENV $PHASE
+          fi
+
+      - name: Deployment notification
+        if: always()
+        run: |
+          echo "Deployment status: ${{ job.status }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Phase: ${{ github.event.inputs.phase }}"

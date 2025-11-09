@@ -1,7 +1,33 @@
 {
   "permissions": {
     "allow": [
-      "Bash(if [ -f \"/c/dev2/niigatacity-kaigo-subsystem/.claude-state/project-state.json\" ])"
+      "Bash(git log:*)",
+      "Read(//c/dev2/aqua-estimaits/.claude-state/**)",
+      "Read(//c/**)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git rm:*)",
+      "Bash(git restore:*)",
+      "Bash(dir /s /b .claude*.md 2)",
+      "Bash(nul)",
+      "Bash(findstr:*)",
+      "Bash(more:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(dir:*)",
+      "Bash(cat:*)",
+      "Bash(awk:*)",
+      "Bash(.claude/agents/coder/AGENT.md)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(mv:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(test:*)",
+      "Bash(chmod:*)",
+      "Bash(xmllint:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

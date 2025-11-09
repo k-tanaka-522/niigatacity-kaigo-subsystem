@@ -81,13 +81,48 @@
       "region": "東京リージョン（ap-northeast-1）、DR: 大阪リージョン（ap-northeast-3）"
     }
   },
+  "team_structure": {
+    "infra_team": {
+      "responsibility": "インフラ設計・構築・運用",
+      "scope": [
+        "CloudFormation テンプレート",
+        "ネットワーク設計",
+        "セキュリティ設計",
+        "監視・ロギング設計",
+        "バックアップ・DR設計",
+        "インフラCI/CD"
+      ],
+      "documents": "docs/02_設計/基本設計/10_インフラ/"
+    },
+    "app_team": {
+      "responsibility": "アプリケーション設計・開発・テスト",
+      "scope": [
+        "フロントエンド (.NET Core 9 C#)",
+        "バックエンド (Next.js TypeScript)",
+        "データベーススキーマ設計",
+        "API設計",
+        "アプリCI/CD"
+      ],
+      "documents": "docs/02_設計/基本設計/20_アプリケーション/"
+    },
+    "collaboration": {
+      "overall_design": "docs/02_設計/基本設計/00_全体/ - 両チーム共同レビュー",
+      "codeowners": ".github/CODEOWNERS - チーム責任分担の明確化"
+    }
+  },
   "design": {
+    "status": "refactored",
     "architecture": "Multi-Account（AWS Organizations）、ハブ&スポークモデル（Transit Gateway）、コンテナベース（ECS Fargate）",
+    "document_structure": {
+      "overall": "docs/02_設計/基本設計/00_全体/ - 全体設計（両チーム）",
+      "infrastructure": "docs/02_設計/基本設計/10_インフラ/ - インフラ設計（インフラチーム）",
+      "application": "docs/02_設計/基本設計/20_アプリケーション/ - アプリ設計（アプリチーム）"
+    },
     "tech_stack": {
       "iac": "AWS CloudFormation",
       "accounts": "4アカウント（本番共通系、本番アプリ系、ステージング共通系、ステージングアプリ系）",
       "network": "Transit Gateway、Direct Connect（100Mbps × 2回線）",
-      "compute": "ECS Fargate + ALB",
+      "compute": "ECS Fargate + ALB（介護事業者用、市職員用、バッチ処理で分離）",
       "database": "RDS MySQL Multi-AZ",
       "cache": "ElastiCache Redis",
       "storage": "S3 + CloudFront",
@@ -104,24 +139,66 @@
     "cicd_strategy": {
       "tool": "GitHub Actions",
       "deployment_method": "CloudFormation Change Sets（dry-run必須）",
-      "environments": ["production", "staging"]
+      "environments": ["production", "staging"],
+      "monorepo": "app/ と infra/ を1リポジトリで管理、paths フィルターで分離"
+    },
+    "cloudformation_refactoring": {
+      "status": "completed",
+      "before": "production/, staging/ に重複テンプレート",
+      "after": "stacks/ + templates/ + parameters/ 構成",
+      "completed_at": "2025-11-09"
     }
   },
   "implementation": {
+    "status": "ready",
     "directory_structure": "docs/, infra/cloudformation/, app/backend/, app/frontend/",
     "coding_standards_applied": true,
     "cloudformation_templates": 14,
-    "application_structure": ".NET Core backend + Next.js frontend"
+    "application_structure": ".NET Core backend + Next.js frontend",
+    "blocker": null
+  },
+  "deployment": {
+    "current_state": "all_stacks_deleted",
+    "deleted_at": "2025-11-09T22:30:00Z",
+    "deleted_stacks": [
+      "niigata-kaigo-staging-subnets-stack",
+      "niigata-kaigo-staging-vpc-core-stack"
+    ],
+    "reason": "CloudFormation 構成リファクタリングのためクリーンアップ"
+  },
+  "next_session": {
+    "priority": "high",
+    "tasks": [
+      "VPC スタックから段階的デプロイ開始（staging環境）",
+      "Network スタック（VPC、Subnet、NAT Gateway、Route Table）のデプロイ検証",
+      "Security スタック（KMS、Security Groups）のデプロイ検証",
+      "Database スタック（RDS MySQL）のデプロイ検証",
+      "Compute スタック（ECS、ALB）のデプロイ検証",
+      "GitHub Actions CI/CDパイプライン検証",
+      "全リソース削除（コスト節約）"
+    ],
+    "references": [
+      "docs/02_設計/基本設計/10_インフラ/10_CloudFormation構成/ - CloudFormation構成設計",
+      "infra/cloudformation/ - CloudFormationテンプレート",
+      "scripts/ - デプロイスクリプト",
+      ".github/workflows/infra-deploy-minimal.yml - CI/CDワークフロー"
+    ]
   },
   "metadata": {
-    "version": "1.0.0",
-    "last_command": "/check",
+    "version": "1.2.0",
+    "last_command": "docs-reorganization",
     "last_updated_by": "Claude (PM)",
+    "last_session_date": "2025-11-09",
     "git_branch": "master",
+    "recent_changes": [
+      "設計書をチーム別に再構成（00_全体、10_インフラ、20_アプリケーション）",
+      "CODEOWNERS作成（チーム責任分担の明確化）",
+      "CloudFormationリファクタリング完了（stacks/ + templates/ + parameters/）"
+    ],
     "recent_commits": [
-      "abb34df: fix: ログイン画面のレイアウト修正",
-      "8e29756: feat: Complete application management UI implementation",
-      "087535f: Fix Critical security issues and upgrade to .NET 9"
+      "9f5816a: feat: Add Subnets stack parameters for staging",
+      "d61e108: feat: Add minimal infrastructure deployment workflow for testing",
+      "1515b8a: fix: Add set +e around describe-stacks to prevent script exit"
     ]
   }
 }
