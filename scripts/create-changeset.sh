@@ -15,7 +15,7 @@ Arguments:
   stack-name        CloudFormation スタック名
   template-file     CloudFormation テンプレートファイルパス
   parameters-file   パラメーターファイルパス（JSON形式）
-  environment       環境名（production または staging）
+  environment       環境名（production, staging, または dev）
 
 Example:
   $0 niigata-kaigo-staging-network-stack \\
@@ -40,8 +40,8 @@ ENVIRONMENT=$4
 CHANGESET_NAME="${STACK_NAME}-changeset-$(date +%Y%m%d-%H%M%S)"
 
 # 環境名のバリデーション
-if [[ "$ENVIRONMENT" != "production" && "$ENVIRONMENT" != "staging" ]]; then
-  echo "❌ Error: 環境名は 'production' または 'staging' である必要があります"
+if [[ "$ENVIRONMENT" != "production" && "$ENVIRONMENT" != "staging" && "$ENVIRONMENT" != "dev" ]]; then
+  echo "❌ Error: 環境名は 'production', 'staging', または 'dev' である必要があります"
   exit 1
 fi
 
