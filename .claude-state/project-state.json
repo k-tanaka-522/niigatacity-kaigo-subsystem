@@ -92,21 +92,21 @@
         "バックアップ・DR設計",
         "インフラCI/CD"
       ],
-      "documents": "docs/02_設計/基本設計/10_インフラ/"
+      "documents": "docs/02_設計/インフラ設計/"
     },
     "app_team": {
       "responsibility": "アプリケーション設計・開発・テスト",
       "scope": [
-        "フロントエンド (.NET Core 9 C#)",
-        "バックエンド (Next.js TypeScript)",
+        "フロントエンド (Next.js TypeScript)",
+        "バックエンド (.NET Core 9 C#)",
         "データベーススキーマ設計",
         "API設計",
         "アプリCI/CD"
       ],
-      "documents": "docs/02_設計/基本設計/20_アプリケーション/"
+      "documents": "docs/02_設計/アプリケーション設計/"
     },
     "collaboration": {
-      "overall_design": "docs/02_設計/基本設計/00_全体/ - 両チーム共同レビュー",
+      "overall_design": "docs/00_RFP/, docs/01_requirements/ - 両チーム共同レビュー",
       "codeowners": ".github/CODEOWNERS - チーム責任分担の明確化"
     }
   },
@@ -114,9 +114,8 @@
     "status": "refactored",
     "architecture": "Multi-Account（AWS Organizations）、ハブ&スポークモデル（Transit Gateway）、コンテナベース（ECS Fargate）",
     "document_structure": {
-      "overall": "docs/02_設計/基本設計/00_全体/ - 全体設計（両チーム）",
-      "infrastructure": "docs/02_設計/基本設計/10_インフラ/ - インフラ設計（インフラチーム）",
-      "application": "docs/02_設計/基本設計/20_アプリケーション/ - アプリ設計（アプリチーム）"
+      "infrastructure": "docs/02_設計/インフラ設計/ - インフラ設計（基本設計 + 詳細設計）",
+      "application": "docs/02_設計/アプリケーション設計/ - アプリ設計（基本設計 + 詳細設計）"
     },
     "tech_stack": {
       "iac": "AWS CloudFormation",
@@ -191,8 +190,9 @@
     "last_session_date": "2025-11-09",
     "git_branch": "master",
     "recent_changes": [
-      "設計書をチーム別に再構成（00_全体、10_インフラ、20_アプリケーション）",
-      "CODEOWNERS作成（チーム責任分担の明確化）",
+      "設計書をチーム別に完全分離（インフラ設計/ と アプリケーション設計/）",
+      "各チームが基本設計・詳細設計のツリーを独立して持つ構造に変更",
+      "CODEOWNERS更新（新しいディレクトリ構造に対応）",
       "CloudFormationリファクタリング完了（stacks/ + templates/ + parameters/）"
     ],
     "recent_commits": [
