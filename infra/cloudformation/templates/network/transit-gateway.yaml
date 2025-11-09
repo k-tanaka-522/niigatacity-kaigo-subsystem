@@ -146,29 +146,19 @@ Outputs:
   TransitGatewayId:
     Description: 'Transit Gateway ID'
     Value: !Ref TransitGateway
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TransitGatewayId'
 
   TransitGatewayArn:
     Description: 'Transit Gateway ARN'
     Value: !GetAtt TransitGateway.Id
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TransitGatewayArn'
 
   CommonRouteTableId:
     Description: 'Transit Gateway Route Table ID for Common VPC'
     Value: !Ref CommonRouteTable
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TGW-RT-Common'
 
   AppRouteTableId:
     Description: 'Transit Gateway Route Table ID for App VPC'
     Value: !Ref AppRouteTable
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TGW-RT-App'
 
   AmazonSideAsn:
     Description: 'Amazon side ASN'
     Value: !Ref AmazonSideAsn
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TGW-ASN'
