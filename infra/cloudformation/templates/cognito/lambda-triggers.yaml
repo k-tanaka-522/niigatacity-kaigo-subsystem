@@ -1,0 +1,531 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito Lambda Triggers for Authentication and Token Generation'
+
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - E0000
+
+# ==============================================================================
+# Parameters
+# ==============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: kaigo-subsys
+    Description: Project name for resource naming
+
+  Environment:
+    Type: String
+    AllowedValues:
+      - prod
+      - stg
+    Description: Environment name
+
+  LoginAttemptsTableName:
+    Type: String
+    Description: Login Attempts DynamoDB Table Name
+
+  MfaBackupCodesTableName:
+    Type: String
+    Description: MFA Backup Codes DynamoDB Table Name
+
+# ==============================================================================
+# Resources
+# ==============================================================================
+Resources:
+  # ------------------------------------------------------------------------------
+  # Lambda実行ロール（5つのLambda関数共通）
+  # 目的: Lambda関数がDynamoDB、CloudWatch Logsにアクセスできるようにする
+  # 影響: すべてのCognito Lambda トリガーがこのロールを使用
+  # 前提: 最小権限の原則に従い、必要な権限のみ付与
+  # ------------------------------------------------------------------------------
+  CognitoLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-${Environment}-cognito-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${LoginAttemptsTableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MfaBackupCodesTableName}
+        - PolicyName: CognitoAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminUpdateUserAttributes
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-cognito-lambda-role
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ------------------------------------------------------------------------------
+  # PreAuthentication Lambda
+  # 目的: 認証前のセキュリティチェック（アカウントロック、パスワード有効期限）
+  # 影響: ログイン時に毎回実行、認証を許可または拒否
+  # 前提: DynamoDBでログイン試行回数を管理、5回失敗で30分ロック
+  # ------------------------------------------------------------------------------
+  PreAuthenticationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-pre-auth
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CognitoLambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          LOGIN_ATTEMPTS_TABLE: !Ref LoginAttemptsTableName
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+          const client = new DynamoDBClient({});
+          const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+          exports.handler = async (event) => {
+            const userId = event.userName;
+            const now = Math.floor(Date.now() / 1000);
+
+            try {
+              // 1. DynamoDBからログイン試行情報を取得
+              const getResult = await ddbDocClient.send(new GetCommand({
+                TableName: process.env.LOGIN_ATTEMPTS_TABLE,
+                Key: { userId }
+              }));
+
+              const attempts = getResult.Item || { failedAttempts: 0, lastAttemptTime: 0 };
+
+              // 2. アカウントロックアウトチェック
+              if (attempts.lockedUntil && attempts.lockedUntil > now) {
+                const remainingMinutes = Math.ceil((attempts.lockedUntil - now) / 60);
+                throw new Error(`アカウントがロックされています。あと${remainingMinutes}分後に再試行してください。`);
+              }
+
+              // 3. ログイン試行回数チェック（15分以内に5回失敗）
+              if (attempts.lastAttemptTime && (now - attempts.lastAttemptTime) < 900) {
+                if (attempts.failedAttempts >= 5) {
+                  // ロックアウト設定（30分）
+                  const lockedUntil = now + 1800;
+                  await ddbDocClient.send(new UpdateCommand({
+                    TableName: process.env.LOGIN_ATTEMPTS_TABLE,
+                    Key: { userId },
+                    UpdateExpression: 'SET lockedUntil = :lockedUntil, failedAttempts = :zero',
+                    ExpressionAttributeValues: {
+                      ':lockedUntil': lockedUntil,
+                      ':zero': 0
+                    }
+                  }));
+                  throw new Error('ログイン試行回数が上限を超えました。30分後に再試行してください。');
+                }
+              } else {
+                // 15分以上経過している場合、カウントリセット
+                await ddbDocClient.send(new PutCommand({
+                  TableName: process.env.LOGIN_ATTEMPTS_TABLE,
+                  Item: {
+                    userId,
+                    failedAttempts: 0,
+                    lastAttemptTime: now
+                  }
+                }));
+              }
+
+              // 4. パスワード有効期限チェック（90日）
+              const passwordLastChanged = event.request.userAttributes['custom:passwordLastChanged'];
+              if (passwordLastChanged) {
+                const daysSinceChange = (now - parseInt(passwordLastChanged)) / 86400;
+                if (daysSinceChange > 90) {
+                  throw new Error('パスワードの有効期限が切れています。パスワードを変更してください。');
+                }
+              }
+
+              return event;
+            } catch (error) {
+              console.error('PreAuthentication error - ', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-pre-auth
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  PreAuthenticationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PreAuthenticationFunction}
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------------------
+  # PostAuthentication Lambda
+  # 目的: 認証成功後の処理（最終ログイン日時記録、試行回数リセット）
+  # 影響: ログイン成功時に毎回実行
+  # 前提: ログイン成功後、DynamoDBの試行回数をリセット
+  # ------------------------------------------------------------------------------
+  PostAuthenticationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-post-auth
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CognitoLambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          LOGIN_ATTEMPTS_TABLE: !Ref LoginAttemptsTableName
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+
+          const client = new DynamoDBClient({});
+          const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+          exports.handler = async (event) => {
+            const userId = event.userName;
+            const now = Math.floor(Date.now() / 1000);
+
+            try {
+              // 1. ログイン試行回数をリセット
+              await ddbDocClient.send(new PutCommand({
+                TableName: process.env.LOGIN_ATTEMPTS_TABLE,
+                Item: {
+                  userId,
+                  failedAttempts: 0,
+                  lastAttemptTime: now,
+                  lastLoginTime: now
+                }
+              }));
+
+              // 2. ログ出力
+              console.log(JSON.stringify({
+                event: 'user_login_success',
+                userId: userId,
+                timestamp: now,
+                environment: process.env.ENVIRONMENT
+              }));
+
+              return event;
+            } catch (error) {
+              console.error('PostAuthentication error - ', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-post-auth
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  PostAuthenticationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PostAuthenticationFunction}
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------------------
+  # PostConfirmation Lambda
+  # 目的: 初回ログイン時のユーザー情報登録、MFAバックアップコード生成
+  # 影響: 初回ログイン時のみ実行
+  # 前提: MFAバックアップコードを10個生成してDynamoDBに保存
+  # ------------------------------------------------------------------------------
+  PostConfirmationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-post-confirm
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CognitoLambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          MFA_BACKUP_CODES_TABLE: !Ref MfaBackupCodesTableName
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          const crypto = require('crypto');
+          const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+          const { DynamoDBDocumentClient, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
+
+          const client = new DynamoDBClient({});
+          const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+          function generateBackupCodes(count = 10) {
+            const codes = [];
+            for (let i = 0; i < count; i++) {
+              codes.push(crypto.randomBytes(4).toString('hex').toUpperCase());
+            }
+            return codes;
+          }
+
+          exports.handler = async (event) => {
+            const userId = event.request.userAttributes.sub;
+            const now = Date.now();
+
+            try {
+              // 1. MFAバックアップコードを生成
+              const backupCodes = generateBackupCodes(10);
+
+              // 2. DynamoDBに保存
+              const putRequests = backupCodes.map(code => ({
+                PutRequest: {
+                  Item: {
+                    userId,
+                    code,
+                    used: false,
+                    createdAt: now
+                  }
+                }
+              }));
+
+              await ddbDocClient.send(new BatchWriteCommand({
+                RequestItems: {
+                  [process.env.MFA_BACKUP_CODES_TABLE]: putRequests
+                }
+              }));
+
+              // 3. ログ出力
+              console.log(JSON.stringify({
+                event: 'user_confirmed',
+                userId: userId,
+                timestamp: now,
+                backupCodesGenerated: backupCodes.length
+              }));
+
+              return event;
+            } catch (error) {
+              console.error('PostConfirmation error - ', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-post-confirm
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  PostConfirmationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PostConfirmationFunction}
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------------------
+  # PreTokenGeneration Lambda
+  # 目的: IDトークンにカスタムクレーム（ロール、事業所ID）を追加
+  # 影響: トークン生成時に毎回実行、アプリケーション層でのRBACに使用
+  # 前提: ユーザー属性からロール、事業所IDを取得してトークンに埋め込む
+  # ------------------------------------------------------------------------------
+  PreTokenGenerationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-pre-token
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CognitoLambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            try {
+              const role = event.request.userAttributes['custom:role'] || '';
+              const organizationId = event.request.userAttributes['custom:organizationId'] || '';
+              const organizationName = event.request.userAttributes['custom:organizationName'] || '';
+              const employeeId = event.request.userAttributes['custom:employeeId'] || '';
+              const department = event.request.userAttributes['custom:department'] || '';
+
+              // IDトークンにカスタムクレームを追加
+              event.response = {
+                claimsOverrideDetails: {
+                  claimsToAddOrOverride: {
+                    'custom:role': role,
+                    'custom:organizationId': organizationId,
+                    'custom:organizationName': organizationName,
+                    'custom:employeeId': employeeId,
+                    'custom:department': department
+                  }
+                }
+              };
+
+              return event;
+            } catch (error) {
+              console.error('PreTokenGeneration error - ', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-pre-token
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  PreTokenGenerationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PreTokenGenerationFunction}
+      RetentionInDays: 30
+
+  # ------------------------------------------------------------------------------
+  # CustomMessage Lambda
+  # 目的: メール・SMSメッセージのカスタマイズ（日本語化）
+  # 影響: メール送信時に毎回実行
+  # 前提: パスワード再設定、アカウント作成時のメッセージを日本語化
+  # ------------------------------------------------------------------------------
+  CustomMessageFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-${Environment}-custom-msg
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CognitoLambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            try {
+              if (event.triggerSource === 'CustomMessage_ForgotPassword') {
+                event.response.emailSubject = '【新潟市介護保険事業所システム】パスワード再設定';
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  'パスワード再設定用の確認コード - ' + event.request.codeParameter + '\n\n' +
+                  'このコードを15分以内に入力してください。\n\n' +
+                  'このメールに心当たりがない場合は、無視してください。';
+              }
+
+              if (event.triggerSource === 'CustomMessage_AdminCreateUser') {
+                event.response.emailSubject = '【新潟市介護保険事業所システム】アカウント作成';
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  'アカウントが作成されました。\n\n' +
+                  'ユーザー名 - ' + event.userName + '\n' +
+                  '一時パスワード - ' + event.request.codeParameter + '\n\n' +
+                  '初回ログイン時にパスワードを変更してください。\n\n' +
+                  'ログインURL - https://kaigo-subsys-' + process.env.ENVIRONMENT + '.auth.ap-northeast-1.amazoncognito.com';
+              }
+
+              if (event.triggerSource === 'CustomMessage_ResendCode') {
+                event.response.emailSubject = '【新潟市介護保険事業所システム】確認コード再送';
+                event.response.emailMessage = '【新潟市介護保険事業所システム】\n\n' +
+                  '確認コード - ' + event.request.codeParameter + '\n\n' +
+                  'このコードを15分以内に入力してください。';
+              }
+
+              return event;
+            } catch (error) {
+              console.error('CustomMessage error - ', error);
+              throw error;
+            }
+          };
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${Environment}-custom-msg
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  CustomMessageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CustomMessageFunction}
+      RetentionInDays: 30
+
+# ==============================================================================
+# Outputs
+# ==============================================================================
+Outputs:
+  PreAuthFunctionArn:
+    Description: PreAuthentication Lambda Function ARN
+    Value: !GetAtt PreAuthenticationFunction.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-PreAuthFunctionArn
+
+  PostAuthFunctionArn:
+    Description: PostAuthentication Lambda Function ARN
+    Value: !GetAtt PostAuthenticationFunction.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-PostAuthFunctionArn
+
+  PostConfirmFunctionArn:
+    Description: PostConfirmation Lambda Function ARN
+    Value: !GetAtt PostConfirmationFunction.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-PostConfirmFunctionArn
+
+  PreTokenFunctionArn:
+    Description: PreTokenGeneration Lambda Function ARN
+    Value: !GetAtt PreTokenGenerationFunction.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-PreTokenFunctionArn
+
+  CustomMessageFunctionArn:
+    Description: CustomMessage Lambda Function ARN
+    Value: !GetAtt CustomMessageFunction.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-CustomMessageFunctionArn
+
+  CognitoLambdaExecutionRoleArn:
+    Description: Cognito Lambda Execution Role ARN
+    Value: !GetAtt CognitoLambdaExecutionRole.Arn
+    Export:
+      Name: !Sub ${ProjectName}-${Environment}-CognitoLambdaRoleArn

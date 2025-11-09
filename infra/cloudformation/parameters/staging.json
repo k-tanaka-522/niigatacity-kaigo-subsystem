@@ -1,0 +1,50 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "VpcCidr",
+    "ParameterValue": "10.2.0.0/16"
+  },
+  {
+    "ParameterKey": "PublicSubnet1Cidr",
+    "ParameterValue": "10.2.1.0/24"
+  },
+  {
+    "ParameterKey": "PublicSubnet2Cidr",
+    "ParameterValue": "10.2.2.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnet1Cidr",
+    "ParameterValue": "10.2.11.0/24"
+  },
+  {
+    "ParameterKey": "PrivateSubnet2Cidr",
+    "ParameterValue": "10.2.12.0/24"
+  },
+  {
+    "ParameterKey": "TemplateBucket",
+    "ParameterValue": "niigata-kaigo-cfn-templates-staging"
+  },
+  {
+    "ParameterKey": "TemplatePrefix",
+    "ParameterValue": "templates"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t3.small"
+  },
+  {
+    "ParameterKey": "ECSTaskCpu",
+    "ParameterValue": "256"
+  },
+  {
+    "ParameterKey": "ECSTaskMemory",
+    "ParameterValue": "512"
+  }
+]

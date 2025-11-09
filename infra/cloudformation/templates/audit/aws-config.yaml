@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Config Stack for GCAS Compliance - Multi-Account Ready'
+
+# ========================================
+# Metadata
+# ========================================
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Project Configuration'
+        Parameters:
+          - ProjectName
+          - EnvironmentName
+      - Label:
+          default: 'Multi-Account Configuration'
+        Parameters:
+          - DeploymentMode
+          - OrganizationId
+      - Label:
+          default: 'AWS Config Configuration'
+        Parameters:
+          - RecordingFrequency
+          - EnableAllRegions
+
+# ========================================
+# Parameters
+# ========================================
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: niigata-kaigo
+    Description: Project name for resource naming
+
+  EnvironmentName:
+    Type: String
+    AllowedValues:
+      - production
+      - staging
+    Description: Environment name
+
+  # Multi-Account Support Parameters
+  DeploymentMode:
+    Type: String
+    Default: single-account
+    AllowedValues:
+      - single-account
+      - multi-account-org
+    Description: |
+      Deployment mode:
+      - single-account: Deploy in a single AWS account
+      - multi-account-org: Deploy in AWS Organizations
+
+  OrganizationId:
+    Type: String
+    Default: ''
+    Description: |
+      AWS Organization ID (e.g., o-xxxxxxxxxx).
+      Required when DeploymentMode=multi-account-org.
+
+  RecordingFrequency:
+    Type: String
+    Default: CONTINUOUS
+    AllowedValues:
+      - CONTINUOUS
+      - DAILY
+    Description: Recording frequency for configuration changes
+
+  EnableAllRegions:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Enable AWS Config in all regions
+
+# ========================================
+# Conditions
+# ========================================
+
+Conditions:
+  IsMultiAccountMode: !Equals [!Ref DeploymentMode, 'multi-account-org']
+
+# ========================================
+# Resources
+# ========================================
+
+Resources:
+  # ========================================
+  # S3 Bucket for AWS Config
+  # ========================================
+
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-config-logs-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: STANDARD_IA
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 365
+                StorageClass: GLACIER
+          - Id: ExpireOldLogs
+            Status: Enabled
+            ExpirationInDays: 2555  # 7 years
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-config-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Purpose
+          Value: GCAS-Compliance-Config-Logs
+
+  # ========================================
+  # S3 Bucket Policy
+  # ========================================
+
+  ConfigBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConfigBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Allow AWS Config service to check ACL
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !GetAtt ConfigBucket.Arn
+
+          # Allow AWS Config service to list bucket
+          - Sid: AWSConfigBucketExistenceCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 's3:ListBucket'
+            Resource: !GetAtt ConfigBucket.Arn
+
+          # Allow AWS Config service to write logs
+          - Sid: AWSConfigBucketPutObject
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Sub '${ConfigBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+
+  # ========================================
+  # IAM Role for AWS Config
+  # ========================================
+
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-AWSConfigRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/ConfigRole'
+      Policies:
+        - PolicyName: ConfigS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetBucketVersioning'
+                  - 's3:PutObject'
+                  - 's3:GetObject'
+                Resource:
+                  - !GetAtt ConfigBucket.Arn
+                  - !Sub '${ConfigBucket.Arn}/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-AWSConfigRole'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ========================================
+  # AWS Config Recorder
+  # ========================================
+
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-config-recorder'
+      RoleARN: !GetAtt ConfigRole.Arn
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+        RecordingStrategy:
+          UseOnly: ALL_SUPPORTED_RESOURCE_TYPES
+
+  # ========================================
+  # AWS Config Delivery Channel
+  # ========================================
+
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-config-delivery'
+      S3BucketName: !Ref ConfigBucket
+      ConfigSnapshotDeliveryProperties:
+        DeliveryFrequency: !If [IsMultiAccountMode, TwentyFour_Hours, Six_Hours]
+
+  # ========================================
+  # AWS Config Rules (GCAS Compliance)
+  # ========================================
+
+  # Rule: S3 bucket public read prohibited
+  ConfigRuleS3PublicReadProhibited:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-s3-bucket-public-read-prohibited'
+      Description: Checks that S3 buckets do not allow public read access
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::S3::Bucket'
+
+  # Rule: S3 bucket public write prohibited
+  ConfigRuleS3PublicWriteProhibited:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-s3-bucket-public-write-prohibited'
+      Description: Checks that S3 buckets do not allow public write access
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_WRITE_PROHIBITED
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::S3::Bucket'
+
+  # Rule: RDS encryption enabled
+  ConfigRuleRDSEncrypted:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-rds-storage-encrypted'
+      Description: Checks that RDS instances have encryption enabled
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_STORAGE_ENCRYPTED
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::RDS::DBInstance'
+
+  # Rule: EBS encryption enabled
+  ConfigRuleEBSEncrypted:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-encrypted-volumes'
+      Description: Checks that EBS volumes have encryption enabled
+      Source:
+        Owner: AWS
+        SourceIdentifier: ENCRYPTED_VOLUMES
+      Scope:
+        ComplianceResourceTypes:
+          - 'AWS::EC2::Volume'
+
+  # Rule: CloudTrail enabled
+  ConfigRuleCloudTrailEnabled:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-cloudtrail-enabled'
+      Description: Checks that CloudTrail is enabled
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENABLED
+
+  # Rule: IAM password policy
+  ConfigRuleIAMPasswordPolicy:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-iam-password-policy'
+      Description: Checks that IAM password policy meets security requirements
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_PASSWORD_POLICY
+      InputParameters:
+        RequireUppercaseCharacters: true
+        RequireLowercaseCharacters: true
+        RequireSymbols: true
+        RequireNumbers: true
+        MinimumPasswordLength: 14
+
+  # Rule: Root account MFA enabled
+  ConfigRuleRootAccountMFAEnabled:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: !Sub '${ProjectName}-${EnvironmentName}-root-account-mfa-enabled'
+      Description: Checks that root account has MFA enabled
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
+
+# ========================================
+# Outputs
+# ========================================
+
+Outputs:
+  ConfigBucketName:
+    Description: S3 Bucket name for AWS Config logs
+    Value: !Ref ConfigBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigBucket'
+
+  ConfigBucketArn:
+    Description: S3 Bucket ARN for AWS Config logs
+    Value: !GetAtt ConfigBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigBucketArn'
+
+  ConfigRecorderName:
+    Description: AWS Config Recorder name
+    Value: !Ref ConfigRecorder
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigRecorder'
+
+  ConfigRoleArn:
+    Description: IAM Role ARN for AWS Config
+    Value: !GetAtt ConfigRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigRoleArn'
+
+  DeploymentMode:
+    Description: Deployment mode (single-account or multi-account-org)
+    Value: !Ref DeploymentMode
+    Export:
+      Name: !Sub '${AWS::StackName}-DeploymentMode'

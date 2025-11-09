@@ -1,4 +1,4 @@
-name: Infrastructure Minimal Test
+name: Infrastructure Deployment (Minimal Test)
 
 on:
   workflow_dispatch:
@@ -15,13 +15,12 @@ on:
         required: true
         type: choice
         options:
-          - vpc-core-stack
-          - subnets-stack
-          - nat-gateways-stack
-          - route-tables-stack
+          - 02-network
+          - 04-database
+          - 06-compute-base
 
 permissions:
-  id-token: write  # OIDC認証に必要
+  id-token: write  # OIDC authentication
   contents: read
 
 env:
@@ -29,8 +28,100 @@ env:
   PROJECT_NAME: 'niigata-kaigo'
 
 jobs:
-  deploy-single-stack:
-    name: Deploy Single Stack (Minimal Test)
+  validate:
+    name: Validate CloudFormation Templates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install cfn-lint
+        run: pip install cfn-lint
+
+      - name: Lint CloudFormation templates
+        run: |
+          cfn-lint infra/cloudformation/templates/**/*.yaml --ignore-checks W,E0000 || true
+
+      - name: Validate selected stack template
+        run: |
+          STACK="${{ github.event.inputs.stack }}"
+          TEMPLATE="infra/cloudformation/stacks/${STACK}/main.yaml"
+
+          echo "Validating $TEMPLATE"
+          aws cloudformation validate-template --template-body file://$TEMPLATE > /dev/null
+
+  upload-templates:
+    name: Upload Templates to S3
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Determine S3 bucket
+        id: determine-bucket
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          if [ "$ENV" == "production" ]; then
+            BUCKET="niigata-kaigo-cfn-templates-production"
+          else
+            BUCKET="niigata-kaigo-cfn-templates-staging"
+          fi
+          echo "bucket=$BUCKET" >> $GITHUB_OUTPUT
+
+      - name: Create S3 bucket if not exists
+        run: |
+          BUCKET="${{ steps.determine-bucket.outputs.bucket }}"
+
+          # Check if bucket exists
+          if ! aws s3 ls "s3://$BUCKET" 2>/dev/null; then
+            echo "Bucket $BUCKET does not exist. Creating..."
+            aws s3 mb "s3://$BUCKET" --region ${{ env.AWS_REGION }}
+
+            # Enable versioning
+            aws s3api put-bucket-versioning \
+              --bucket "$BUCKET" \
+              --versioning-configuration Status=Enabled
+
+            echo "Bucket $BUCKET created successfully"
+          else
+            echo "Bucket $BUCKET already exists"
+          fi
+
+      - name: Upload templates to S3
+        run: |
+          BUCKET="${{ steps.determine-bucket.outputs.bucket }}"
+
+          echo "Uploading templates to s3://$BUCKET/templates/"
+          aws s3 sync infra/cloudformation/templates/ \
+            s3://$BUCKET/templates/ \
+            --region ${{ env.AWS_REGION }} \
+            --delete
+
+          echo "✅ Templates uploaded successfully"
+
+  create-changeset:
+    name: Create Change Set
+    needs: upload-templates
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event.inputs.environment }}-infra
@@ -45,29 +136,89 @@ jobs:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Display deployment info
+      - name: Create Change Set
+        id: create-changeset
         run: |
-          echo "========================================="
-          echo "Minimal Stack Deployment Test"
-          echo "========================================="
-          echo "Environment: ${{ github.event.inputs.environment }}"
-          echo "Stack:       ${{ github.event.inputs.stack }}"
-          echo "Region:      ${{ env.AWS_REGION }}"
-          echo "========================================="
+          ENV="${{ github.event.inputs.environment }}"
+          STACK="${{ github.event.inputs.stack }}"
+          STACK_NAME="niigata-kaigo-${ENV}-${STACK}-stack"
+          TEMPLATE="infra/cloudformation/stacks/${STACK}/main.yaml"
+          PARAMETERS="infra/cloudformation/parameters/${ENV}.json"
 
-      - name: Deploy Stack
+          echo "Creating Change Set for stack: $STACK_NAME"
+
+          ./scripts/create-changeset.sh \
+            "$STACK_NAME" \
+            "$TEMPLATE" \
+            "$PARAMETERS" \
+            "$ENV"
+
+          # Get the latest Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          echo "changeset_name=$CHANGESET_NAME" >> $GITHUB_OUTPUT
+          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
+
+      - name: Describe Change Set
         run: |
-          echo "Deploying ${{ github.event.inputs.stack }} to ${{ github.event.inputs.environment }}..."
-          bash infra/cloudformation/scripts/deploy.sh \
-            ${{ github.event.inputs.environment }} \
-            02_network \
-            ${{ github.event.inputs.stack }} <<< "yes"
+          STACK_NAME="${{ steps.create-changeset.outputs.stack_name }}"
+          CHANGESET_NAME="${{ steps.create-changeset.outputs.changeset_name }}"
+
+          ./scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+      - name: Wait for manual approval
+        run: |
+          echo "⏸️  Change Set created. Waiting for manual approval..."
+          echo "Stack: ${{ steps.create-changeset.outputs.stack_name }}"
+          echo "Change Set: ${{ steps.create-changeset.outputs.changeset_name }}"
+          echo ""
+          echo "Review the Change Set in the AWS Console and approve this workflow to continue."
+
+  execute-changeset:
+    name: Execute Change Set
+    needs: create-changeset
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Execute Change Set
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          STACK="${{ github.event.inputs.stack }}"
+          STACK_NAME="niigata-kaigo-${ENV}-${STACK}-stack"
+
+          # Get the latest Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          echo "Executing Change Set: $CHANGESET_NAME"
+          echo "yes" | ./scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
 
       - name: Deployment notification
         if: always()
         run: |
-          echo "========================================="
-          echo "Deployment status: ${{ job.status }}"
+          echo "========================================"
+          echo "Deployment Summary"
+          echo "========================================"
+          echo "Status: ${{ job.status }}"
           echo "Environment: ${{ github.event.inputs.environment }}"
           echo "Stack: ${{ github.event.inputs.stack }}"
-          echo "========================================="
+          echo "Region: ${{ env.AWS_REGION }}"
+          echo "========================================"
