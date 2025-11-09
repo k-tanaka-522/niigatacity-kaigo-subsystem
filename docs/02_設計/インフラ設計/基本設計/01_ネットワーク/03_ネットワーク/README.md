@@ -4,6 +4,8 @@
 
 このディレクトリには、ネットワーク設計（VPC、Transit Gateway、Direct Connect）が含まれています。
 
+**注意**: Transit Gateway と Direct Connect は高額・回線手配が必要なため、Phase 1では実装を保留します。
+
 ## 含まれるファイル
 
 | ファイル名 | 説明 | 読む順序 |
@@ -11,7 +13,7 @@
 | `network_design.md` | ネットワーク設計書（VPC、サブネット、ルーティング） | 1 |
 | `network_diagram.md` | ネットワーク構成図（Mermaid） | 2 |
 | `vpc_parameters.md` | VPCパラメータシート（具体的な値） | 3 |
-| `transit_gateway_parameters.md` | Transit Gateway パラメータシート | 4 |
+| `transit_gateway_parameters.md` | Transit Gateway パラメータシート ★実装保留 | 4 |
 | `README.md` | このファイル（ディレクトリの説明） | - |
 
 ## 読み方

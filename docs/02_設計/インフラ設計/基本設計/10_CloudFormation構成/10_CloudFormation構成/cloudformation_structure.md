@@ -132,7 +132,7 @@ infra/cloudformation/
 │   │   ├── subnets.yaml                # Subnets（別メニュー、たまに追加）
 │   │   ├── nat-gateways.yaml           # NAT Gateway（別メニュー、高額）
 │   │   ├── route-tables.yaml           # Route Tables（別メニュー、たまに変更）
-│   │   ├── transit-gateway.yaml        # Transit Gateway（ハブ&スポーク）
+│   │   ├── transit-gateway.yaml        # Transit Gateway（ハブ&スポーク）★ 高額・Direct Connect回線手配必要のため実装保留
 │   │   └── security-groups/            # ★ ディレクトリ（激増する）
 │   │       ├── alb-sg.yaml
 │   │       ├── ecs-sg.yaml
