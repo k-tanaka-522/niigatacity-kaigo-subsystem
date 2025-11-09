@@ -28,7 +28,17 @@
       "Bash(chmod:*)",
       "Bash(xmllint:*)",
       "Bash(python:*)",
-      "Bash(aws cloudformation list-stacks:*)"
+      "Bash(aws cloudformation list-stacks:*)",
+      "Bash(aws cloudformation create-change-set:*)",
+      "Bash(aws cloudformation wait:*)",
+      "Bash(aws cloudformation describe-change-set:*)",
+      "Bash(aws cloudformation execute-change-set:*)",
+      "Bash(aws cloudformation cancel-update-stack:*)",
+      "Bash(aws cloudformation:*)",
+      "Bash(git push:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run watch:*)"
     ],
     "deny": [],
     "ask": []
