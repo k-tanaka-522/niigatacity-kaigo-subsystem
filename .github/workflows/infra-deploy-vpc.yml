@@ -1,0 +1,250 @@
+name: VPC Core Stack Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  id-token: write  # OIDC authentication
+  contents: read
+
+env:
+  AWS_REGION: 'ap-northeast-1'
+  PROJECT_NAME: 'niigata-kaigo'
+
+jobs:
+  validate:
+    name: Validate VPC Template
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate template
+        run: |
+          TEMPLATE="infra/cloudformation/templates/network/vpc-and-igw.yaml"
+          echo "Validating $TEMPLATE"
+          aws cloudformation validate-template \
+            --template-body file://$TEMPLATE > /dev/null
+          echo "✅ Template validation successful"
+
+  create-changeset:
+    name: Create Change Set
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-infra
+    outputs:
+      stack_name: ${{ steps.create.outputs.stack_name }}
+      changeset_name: ${{ steps.create.outputs.changeset_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create Change Set
+        id: create
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-vpc-core-stack"
+          TEMPLATE="infra/cloudformation/templates/network/vpc-and-igw.yaml"
+          PARAMETERS="infra/cloudformation/parameters/${ENV}/vpc-core-stack-params.json"
+          CHANGESET_NAME="${STACK_NAME}-$(date +%Y%m%d%H%M%S)"
+
+          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
+          echo "changeset_name=$CHANGESET_NAME" >> $GITHUB_OUTPUT
+
+          echo "==================================="
+          echo "Creating Change Set"
+          echo "==================================="
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
+          echo "==================================="
+
+          # Check if stack exists
+          if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region ${{ env.AWS_REGION }} 2>/dev/null; then
+            CHANGESET_TYPE="UPDATE"
+            echo "✓ Stack exists. Creating UPDATE change set"
+          else
+            CHANGESET_TYPE="CREATE"
+            echo "✓ Stack does not exist. Creating CREATE change set"
+          fi
+
+          # Create Change Set
+          aws cloudformation create-change-set \
+            --stack-name "$STACK_NAME" \
+            --change-set-name "$CHANGESET_NAME" \
+            --change-set-type "$CHANGESET_TYPE" \
+            --template-body "$(cat $TEMPLATE)" \
+            --parameters "$(cat $PARAMETERS)" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --tags \
+              Key=Environment,Value=$ENV \
+              Key=Project,Value=${{ env.PROJECT_NAME }} \
+              Key=ManagedBy,Value=CloudFormation \
+              Key=DeployedBy,Value=GitHubActions \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✓ Change Set created. Waiting for completion..."
+
+          # Wait for Change Set creation
+          aws cloudformation wait change-set-create-complete \
+            --stack-name "$STACK_NAME" \
+            --change-set-name "$CHANGESET_NAME" \
+            --region ${{ env.AWS_REGION }} 2>&1 || {
+              STATUS=$(aws cloudformation describe-change-set \
+                --stack-name "$STACK_NAME" \
+                --change-set-name "$CHANGESET_NAME" \
+                --region ${{ env.AWS_REGION }} \
+                --query 'Status' \
+                --output text)
+
+              if [ "$STATUS" == "FAILED" ]; then
+                REASON=$(aws cloudformation describe-change-set \
+                  --stack-name "$STACK_NAME" \
+                  --change-set-name "$CHANGESET_NAME" \
+                  --region ${{ env.AWS_REGION }} \
+                  --query 'StatusReason' \
+                  --output text)
+
+                if [[ "$REASON" == *"didn't contain changes"* ]]; then
+                  echo "ℹ️  No changes detected. Stack is up to date."
+                  exit 0
+                else
+                  echo "❌ Change Set creation failed: $REASON"
+                  exit 1
+                fi
+              fi
+            }
+
+          echo "✅ Change Set created successfully"
+
+      - name: Describe Change Set
+        run: |
+          STACK_NAME="${{ steps.create.outputs.stack_name }}"
+          CHANGESET_NAME="${{ steps.create.outputs.changeset_name }}"
+
+          echo "==================================="
+          echo "Change Set Details"
+          echo "==================================="
+
+          aws cloudformation describe-change-set \
+            --stack-name "$STACK_NAME" \
+            --change-set-name "$CHANGESET_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Changes[*].[Type, ResourceChange.Action, ResourceChange.LogicalResourceId, ResourceChange.ResourceType]' \
+            --output table
+
+          echo "==================================="
+          echo "⏸️  Change Set created successfully"
+          echo "Stack: $STACK_NAME"
+          echo "Change Set: $CHANGESET_NAME"
+          echo ""
+          echo "Please review the Change Set above and approve this workflow to execute deployment."
+          echo "==================================="
+
+  execute-changeset:
+    name: Execute Change Set
+    needs: create-changeset
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Execute Change Set
+        run: |
+          STACK_NAME="${{ needs.create-changeset.outputs.stack_name }}"
+          CHANGESET_NAME="${{ needs.create-changeset.outputs.changeset_name }}"
+
+          echo "==================================="
+          echo "Executing Change Set"
+          echo "==================================="
+          echo "Stack: $STACK_NAME"
+          echo "Change Set: $CHANGESET_NAME"
+          echo "==================================="
+
+          aws cloudformation execute-change-set \
+            --stack-name "$STACK_NAME" \
+            --change-set-name "$CHANGESET_NAME" \
+            --region ${{ env.AWS_REGION }}
+
+          echo "✓ Change Set execution initiated"
+          echo "⏳ Waiting for stack operation to complete..."
+
+          # Determine wait command
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].StackStatus' \
+            --output text 2>/dev/null || echo "CREATE_IN_PROGRESS")
+
+          if [[ "$STATUS" == CREATE* ]]; then
+            aws cloudformation wait stack-create-complete \
+              --stack-name "$STACK_NAME" \
+              --region ${{ env.AWS_REGION }}
+          else
+            aws cloudformation wait stack-update-complete \
+              --stack-name "$STACK_NAME" \
+              --region ${{ env.AWS_REGION }}
+          fi
+
+          echo "✅ Stack operation completed successfully"
+
+      - name: Display Stack Outputs
+        run: |
+          STACK_NAME="${{ needs.create-changeset.outputs.stack_name }}"
+
+          echo "==================================="
+          echo "Stack Outputs"
+          echo "==================================="
+
+          aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs[*].[OutputKey, OutputValue]' \
+            --output table
+
+          echo "==================================="
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "==================================="
+          echo "Deployment Summary"
+          echo "==================================="
+          echo "Status: ${{ job.status }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Stack: ${{ needs.create-changeset.outputs.stack_name }}"
+          echo "Change Set: ${{ needs.create-changeset.outputs.changeset_name }}"
+          echo "Region: ${{ env.AWS_REGION }}"
+          echo "==================================="
