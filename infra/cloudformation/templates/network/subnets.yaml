@@ -1,13 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Subnets Stack for Niigata Kaigo Subsystem - Production Environment'
+Description: 'Subnets Stack for Niigata Kaigo Subsystem'
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: 'Stack Dependencies'
+          default: 'VPC Configuration'
         Parameters:
-          - VPCStackName
+          - VPCId
+          - VPCCidr
       - Label:
           default: 'Environment Configuration'
         Parameters:
@@ -15,19 +16,20 @@ Metadata:
           - ProjectName
 
 Parameters:
-  VPCStackName:
+  VPCId:
     Type: String
-    Default: niigata-kaigo-prod-vpc-core-stack
-    Description: Name of the VPC Core stack to import values from
+    Description: VPC ID
+
+  VPCCidr:
+    Type: String
+    Description: VPC CIDR block
 
   EnvironmentName:
     Type: String
-    Default: production
     Description: Environment name
 
   ProjectName:
     Type: String
-    Default: niigata-kaigo
     Description: Project name for tagging
 
 Resources:
@@ -35,21 +37,20 @@ Resources:
   # Public Subnets
   # ========================================
 
-  PublicSubnet1a:
+  PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.1.0/24
+      VpcId: !Ref VPCId
+      CidrBlock: !Select [0, !Cidr [!Ref VPCCidr, 8, 8]]
       AvailabilityZone: !Select [0, !GetAZs '']
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-public-subnet-1a'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-subnet-1'
         - Key: Type
           Value: Public
         - Key: AZ
-          Value: ap-northeast-1a
+          Value: !Select [0, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -57,21 +58,20 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  PublicSubnet1c:
+  PublicSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.2.0/24
+      VpcId: !Ref VPCId
+      CidrBlock: !Select [1, !Cidr [!Ref VPCCidr, 8, 8]]
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-public-subnet-1c'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-public-subnet-2'
         - Key: Type
           Value: Public
         - Key: AZ
-          Value: ap-northeast-1c
+          Value: !Select [1, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -80,26 +80,23 @@ Resources:
           Value: CloudFormation
 
   # ========================================
-  # Private App Subnets
+  # Private Subnets
   # ========================================
 
-  PrivateAppSubnet1a:
+  PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.11.0/24
+      VpcId: !Ref VPCId
+      CidrBlock: !Select [2, !Cidr [!Ref VPCCidr, 8, 8]]
       AvailabilityZone: !Select [0, !GetAZs '']
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-app-subnet-1a'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-subnet-1'
         - Key: Type
           Value: Private
-        - Key: Layer
-          Value: Application
         - Key: AZ
-          Value: ap-northeast-1a
+          Value: !Select [0, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -107,127 +104,20 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  PrivateAppSubnet1c:
+  PrivateSubnet2:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.12.0/24
+      VpcId: !Ref VPCId
+      CidrBlock: !Select [3, !Cidr [!Ref VPCCidr, 8, 8]]
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-app-subnet-1c'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-subnet-2'
         - Key: Type
           Value: Private
-        - Key: Layer
-          Value: Application
         - Key: AZ
-          Value: ap-northeast-1c
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ========================================
-  # Private DB Subnets
-  # ========================================
-
-  PrivateDBSubnet1a:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.21.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-db-subnet-1a'
-        - Key: Type
-          Value: Private
-        - Key: Layer
-          Value: Database
-        - Key: AZ
-          Value: ap-northeast-1a
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  PrivateDBSubnet1c:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.22.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-db-subnet-1c'
-        - Key: Type
-          Value: Private
-        - Key: Layer
-          Value: Database
-        - Key: AZ
-          Value: ap-northeast-1c
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ========================================
-  # Private Cache Subnets
-  # ========================================
-
-  PrivateCacheSubnet1a:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.31.0/24
-      AvailabilityZone: !Select [0, !GetAZs '']
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-cache-subnet-1a'
-        - Key: Type
-          Value: Private
-        - Key: Layer
-          Value: Cache
-        - Key: AZ
-          Value: ap-northeast-1a
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  PrivateCacheSubnet1c:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
-      CidrBlock: 10.1.32.0/24
-      AvailabilityZone: !Select [1, !GetAZs '']
-      MapPublicIpOnLaunch: false
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-cache-subnet-1c'
-        - Key: Type
-          Value: Private
-        - Key: Layer
-          Value: Cache
-        - Key: AZ
-          Value: ap-northeast-1c
+          Value: !Select [1, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -237,53 +127,27 @@ Resources:
 
 Outputs:
   # Public Subnets
-  PublicSubnet1aId:
-    Description: Public Subnet 1a ID
-    Value: !Ref PublicSubnet1a
+  PublicSubnet1Id:
+    Description: Public Subnet 1 ID
+    Value: !Ref PublicSubnet1
     Export:
-      Name: !Sub '${AWS::StackName}-PublicSubnet1aId'
+      Name: !Sub '${AWS::StackName}-PublicSubnet1Id'
 
-  PublicSubnet1cId:
-    Description: Public Subnet 1c ID
-    Value: !Ref PublicSubnet1c
+  PublicSubnet2Id:
+    Description: Public Subnet 2 ID
+    Value: !Ref PublicSubnet2
     Export:
-      Name: !Sub '${AWS::StackName}-PublicSubnet1cId'
+      Name: !Sub '${AWS::StackName}-PublicSubnet2Id'
 
-  # Private App Subnets
-  PrivateAppSubnet1aId:
-    Description: Private App Subnet 1a ID
-    Value: !Ref PrivateAppSubnet1a
+  # Private Subnets
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateAppSubnet1aId'
+      Name: !Sub '${AWS::StackName}-PrivateSubnet1Id'
 
-  PrivateAppSubnet1cId:
-    Description: Private App Subnet 1c ID
-    Value: !Ref PrivateAppSubnet1c
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateAppSubnet1cId'
-
-  # Private DB Subnets
-  PrivateDBSubnet1aId:
-    Description: Private DB Subnet 1a ID
-    Value: !Ref PrivateDBSubnet1a
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateDBSubnet1aId'
-
-  PrivateDBSubnet1cId:
-    Description: Private DB Subnet 1c ID
-    Value: !Ref PrivateDBSubnet1c
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateDBSubnet1cId'
-
-  # Private Cache Subnets
-  PrivateCacheSubnet1aId:
-    Description: Private Cache Subnet 1a ID
-    Value: !Ref PrivateCacheSubnet1a
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateCacheSubnet1aId'
-
-  PrivateCacheSubnet1cId:
-    Description: Private Cache Subnet 1c ID
-    Value: !Ref PrivateCacheSubnet1c
-    Export:
-      Name: !Sub '${AWS::StackName}-PrivateCacheSubnet1cId'
+      Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'

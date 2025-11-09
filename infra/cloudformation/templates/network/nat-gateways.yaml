@@ -1,14 +1,14 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'NAT Gateways Stack for Niigata Kaigo Subsystem - Production Environment'
+Description: 'NAT Gateways Stack for Niigata Kaigo Subsystem'
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: 'Stack Dependencies'
+          default: 'Subnet Configuration'
         Parameters:
-          - VPCStackName
-          - SubnetsStackName
+          - PublicSubnet1Id
+          - PublicSubnet2Id
       - Label:
           default: 'Environment Configuration'
         Parameters:
@@ -16,24 +16,20 @@ Metadata:
           - ProjectName
 
 Parameters:
-  VPCStackName:
+  PublicSubnet1Id:
     Type: String
-    Default: niigata-kaigo-prod-vpc-core-stack
-    Description: Name of the VPC Core stack
+    Description: Public Subnet 1 ID
 
-  SubnetsStackName:
+  PublicSubnet2Id:
     Type: String
-    Default: niigata-kaigo-prod-subnets-stack
-    Description: Name of the Subnets stack
+    Description: Public Subnet 2 ID
 
   EnvironmentName:
     Type: String
-    Default: production
     Description: Environment name
 
   ProjectName:
     Type: String
-    Default: niigata-kaigo
     Description: Project name for tagging
 
 Resources:
@@ -41,101 +37,91 @@ Resources:
   # Elastic IPs for NAT Gateways
   # ========================================
 
-  NATGatewayEIP1a:
+  NATGatewayEIP1:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-eip-1a'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-eip-1'
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
           Value: !Ref ProjectName
         - Key: ManagedBy
           Value: CloudFormation
-        - Key: AZ
-          Value: ap-northeast-1a
 
-  NATGatewayEIP1c:
+  NATGatewayEIP2:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-eip-1c'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-eip-2'
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
           Value: !Ref ProjectName
         - Key: ManagedBy
           Value: CloudFormation
-        - Key: AZ
-          Value: ap-northeast-1c
 
   # ========================================
-  # NAT Gateways (Multi-AZ for Production)
+  # NAT Gateways (Multi-AZ)
   # ========================================
 
-  NATGateway1a:
+  NATGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NATGatewayEIP1a.AllocationId
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PublicSubnet1aId'
+      AllocationId: !GetAtt NATGatewayEIP1.AllocationId
+      SubnetId: !Ref PublicSubnet1Id
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-gw-1a'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-gw-1'
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
           Value: !Ref ProjectName
         - Key: ManagedBy
           Value: CloudFormation
-        - Key: AZ
-          Value: ap-northeast-1a
 
-  NATGateway1c:
+  NATGateway2:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NATGatewayEIP1c.AllocationId
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PublicSubnet1cId'
+      AllocationId: !GetAtt NATGatewayEIP2.AllocationId
+      SubnetId: !Ref PublicSubnet2Id
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-gw-1c'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-gw-2'
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
           Value: !Ref ProjectName
         - Key: ManagedBy
           Value: CloudFormation
-        - Key: AZ
-          Value: ap-northeast-1c
 
 Outputs:
   # NAT Gateway IDs
-  NATGateway1aId:
-    Description: NAT Gateway 1a ID
-    Value: !Ref NATGateway1a
+  NATGateway1Id:
+    Description: NAT Gateway 1 ID
+    Value: !Ref NATGateway1
     Export:
-      Name: !Sub '${AWS::StackName}-NATGateway1aId'
+      Name: !Sub '${AWS::StackName}-NATGateway1Id'
 
-  NATGateway1cId:
-    Description: NAT Gateway 1c ID
-    Value: !Ref NATGateway1c
+  NATGateway2Id:
+    Description: NAT Gateway 2 ID
+    Value: !Ref NATGateway2
     Export:
-      Name: !Sub '${AWS::StackName}-NATGateway1cId'
+      Name: !Sub '${AWS::StackName}-NATGateway2Id'
 
   # Elastic IP Addresses
-  NATGatewayEIP1a:
-    Description: NAT Gateway 1a Elastic IP
-    Value: !Ref NATGatewayEIP1a
+  NATGatewayEIP1:
+    Description: NAT Gateway 1 Elastic IP
+    Value: !Ref NATGatewayEIP1
     Export:
-      Name: !Sub '${AWS::StackName}-NATGatewayEIP1a'
+      Name: !Sub '${AWS::StackName}-NATGatewayEIP1'
 
-  NATGatewayEIP1c:
-    Description: NAT Gateway 1c Elastic IP
-    Value: !Ref NATGatewayEIP1c
+  NATGatewayEIP2:
+    Description: NAT Gateway 2 Elastic IP
+    Value: !Ref NATGatewayEIP2
     Export:
-      Name: !Sub '${AWS::StackName}-NATGatewayEIP1c'
+      Name: !Sub '${AWS::StackName}-NATGatewayEIP2'

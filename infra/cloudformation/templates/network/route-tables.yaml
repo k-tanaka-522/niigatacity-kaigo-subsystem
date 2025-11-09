@@ -1,15 +1,26 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Route Tables Stack for Niigata Kaigo Subsystem - Production Environment'
+Description: 'Route Tables Stack for Niigata Kaigo Subsystem'
 
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label:
-          default: 'Stack Dependencies'
+          default: 'VPC Configuration'
         Parameters:
-          - VPCStackName
-          - SubnetsStackName
-          - NATGatewaysStackName
+          - VPCId
+          - InternetGatewayId
+      - Label:
+          default: 'NAT Gateway Configuration'
+        Parameters:
+          - NATGateway1Id
+          - NATGateway2Id
+      - Label:
+          default: 'Subnet Configuration'
+        Parameters:
+          - PublicSubnet1Id
+          - PublicSubnet2Id
+          - PrivateSubnet1Id
+          - PrivateSubnet2Id
       - Label:
           default: 'Environment Configuration'
         Parameters:
@@ -17,29 +28,44 @@ Metadata:
           - ProjectName
 
 Parameters:
-  VPCStackName:
+  VPCId:
     Type: String
-    Default: niigata-kaigo-prod-vpc-core-stack
-    Description: Name of the VPC Core stack
+    Description: VPC ID
 
-  SubnetsStackName:
+  InternetGatewayId:
     Type: String
-    Default: niigata-kaigo-prod-subnets-stack
-    Description: Name of the Subnets stack
+    Description: Internet Gateway ID
 
-  NATGatewaysStackName:
+  NATGateway1Id:
     Type: String
-    Default: niigata-kaigo-prod-nat-gateways-stack
-    Description: Name of the NAT Gateways stack
+    Description: NAT Gateway 1 ID
+
+  NATGateway2Id:
+    Type: String
+    Description: NAT Gateway 2 ID
+
+  PublicSubnet1Id:
+    Type: String
+    Description: Public Subnet 1 ID
+
+  PublicSubnet2Id:
+    Type: String
+    Description: Public Subnet 2 ID
+
+  PrivateSubnet1Id:
+    Type: String
+    Description: Private Subnet 1 ID
+
+  PrivateSubnet2Id:
+    Type: String
+    Description: Private Subnet 2 ID
 
   EnvironmentName:
     Type: String
-    Default: production
     Description: Environment name
 
   ProjectName:
     Type: String
-    Default: niigata-kaigo
     Description: Project name for tagging
 
 Resources:
@@ -50,8 +76,7 @@ Resources:
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
+      VpcId: !Ref VPCId
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-public-rt'
@@ -70,41 +95,37 @@ Resources:
     Properties:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !ImportValue
-        Fn::Sub: '${VPCStackName}-InternetGatewayId'
+      GatewayId: !Ref InternetGatewayId
 
   # Associate Public Subnets with Public Route Table
-  PublicSubnet1aRouteTableAssociation:
+  PublicSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PublicSubnet1aId'
+      SubnetId: !Ref PublicSubnet1Id
       RouteTableId: !Ref PublicRouteTable
 
-  PublicSubnet1cRouteTableAssociation:
+  PublicSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PublicSubnet1cId'
+      SubnetId: !Ref PublicSubnet2Id
       RouteTableId: !Ref PublicRouteTable
 
   # ========================================
   # Private Route Tables (AZ-specific)
   # ========================================
 
-  # Private Route Table for AZ 1a
-  PrivateRouteTable1a:
+  # Private Route Table for AZ 1
+  PrivateRouteTable1:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
+      VpcId: !Ref VPCId
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-rt-1a'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-rt-1'
         - Key: Type
           Value: Private
         - Key: AZ
-          Value: ap-northeast-1a
+          Value: !Select [0, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -112,52 +133,33 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  # Route to NAT Gateway 1a
-  PrivateRoute1a:
+  # Route to NAT Gateway 1
+  PrivateRoute1:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable1a
+      RouteTableId: !Ref PrivateRouteTable1
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !ImportValue
-        Fn::Sub: '${NATGatewaysStackName}-NATGateway1aId'
+      NatGatewayId: !Ref NATGateway1Id
 
-  # Associate Private App Subnet 1a
-  PrivateAppSubnet1aRouteTableAssociation:
+  # Associate Private Subnet 1
+  PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateAppSubnet1aId'
-      RouteTableId: !Ref PrivateRouteTable1a
+      SubnetId: !Ref PrivateSubnet1Id
+      RouteTableId: !Ref PrivateRouteTable1
 
-  # Associate Private DB Subnet 1a
-  PrivateDBSubnet1aRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateDBSubnet1aId'
-      RouteTableId: !Ref PrivateRouteTable1a
-
-  # Associate Private Cache Subnet 1a
-  PrivateCacheSubnet1aRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateCacheSubnet1aId'
-      RouteTableId: !Ref PrivateRouteTable1a
-
-  # Private Route Table for AZ 1c
-  PrivateRouteTable1c:
+  # Private Route Table for AZ 2
+  PrivateRouteTable2:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: '${VPCStackName}-VPCId'
+      VpcId: !Ref VPCId
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-private-rt-1c'
+          Value: !Sub '${ProjectName}-${EnvironmentName}-private-rt-2'
         - Key: Type
           Value: Private
         - Key: AZ
-          Value: ap-northeast-1c
+          Value: !Select [1, !GetAZs '']
         - Key: Environment
           Value: !Ref EnvironmentName
         - Key: Project
@@ -165,38 +167,20 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  # Route to NAT Gateway 1c
-  PrivateRoute1c:
+  # Route to NAT Gateway 2
+  PrivateRoute2:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable1c
+      RouteTableId: !Ref PrivateRouteTable2
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !ImportValue
-        Fn::Sub: '${NATGatewaysStackName}-NATGateway1cId'
+      NatGatewayId: !Ref NATGateway2Id
 
-  # Associate Private App Subnet 1c
-  PrivateAppSubnet1cRouteTableAssociation:
+  # Associate Private Subnet 2
+  PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateAppSubnet1cId'
-      RouteTableId: !Ref PrivateRouteTable1c
-
-  # Associate Private DB Subnet 1c
-  PrivateDBSubnet1cRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateDBSubnet1cId'
-      RouteTableId: !Ref PrivateRouteTable1c
-
-  # Associate Private Cache Subnet 1c
-  PrivateCacheSubnet1cRouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !ImportValue
-        Fn::Sub: '${SubnetsStackName}-PrivateCacheSubnet1cId'
-      RouteTableId: !Ref PrivateRouteTable1c
+      SubnetId: !Ref PrivateSubnet2Id
+      RouteTableId: !Ref PrivateRouteTable2
 
 Outputs:
   PublicRouteTableId:
@@ -205,14 +189,14 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-PublicRouteTableId'
 
-  PrivateRouteTable1aId:
-    Description: Private Route Table 1a ID
-    Value: !Ref PrivateRouteTable1a
+  PrivateRouteTable1Id:
+    Description: Private Route Table 1 ID
+    Value: !Ref PrivateRouteTable1
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateRouteTable1aId'
+      Name: !Sub '${AWS::StackName}-PrivateRouteTable1Id'
 
-  PrivateRouteTable1cId:
-    Description: Private Route Table 1c ID
-    Value: !Ref PrivateRouteTable1c
+  PrivateRouteTable2Id:
+    Description: Private Route Table 2 ID
+    Value: !Ref PrivateRouteTable2
     Export:
-      Name: !Sub '${AWS::StackName}-PrivateRouteTable1cId'
+      Name: !Sub '${AWS::StackName}-PrivateRouteTable2Id'
