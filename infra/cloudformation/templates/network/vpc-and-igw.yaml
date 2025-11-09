@@ -20,10 +20,11 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: production
-    Description: Environment name (production/staging)
+    Description: Environment name (production/staging/dev)
     AllowedValues:
       - production
       - staging
+      - dev
 
   ProjectName:
     Type: String
