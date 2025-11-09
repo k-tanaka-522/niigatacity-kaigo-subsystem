@@ -117,12 +117,68 @@
       "infrastructure": "docs/02_設計/インフラ設計/ - インフラ設計（基本設計 + 詳細設計）",
       "application": "docs/02_設計/アプリケーション設計/ - アプリ設計（基本設計 + 詳細設計）"
     },
+    "application_architecture": {
+      "ecs_services": {
+        "count": 3,
+        "services": [
+          {
+            "name": "provider-backend-service",
+            "purpose": "介護事業者用API",
+            "tech_stack": ".NET Core 9 (C#)",
+            "alb": "Public ALB",
+            "access": "インターネット経由"
+          },
+          {
+            "name": "staff-backend-service",
+            "purpose": "市職員用API",
+            "tech_stack": ".NET Core 9 (C#)",
+            "alb": "Internal ALB",
+            "access": "庁内のみ（Direct Connect）"
+          },
+          {
+            "name": "batch-service",
+            "purpose": "バッチ処理",
+            "tech_stack": ".NET Core 9 (C#)",
+            "alb": "なし",
+            "trigger": "EventBridge"
+          }
+        ]
+      },
+      "frontend": {
+        "provider": {
+          "tech": "Next.js 14 TypeScript (SSG)",
+          "hosting": "S3 + CloudFront",
+          "access": "インターネット経由"
+        },
+        "staff": {
+          "tech": "Next.js 14 TypeScript (骨格のみ)",
+          "hosting": "庁内Webサーバー（スコープ外）",
+          "access": "庁内のみ"
+        }
+      },
+      "backend_design": {
+        "approach": "統合アプリケーション + 名前空間分離",
+        "structure": "Clean Architecture（API/Application/Domain/Infrastructure）",
+        "controllers": "Provider/, Staff/, Common/ で論理分離",
+        "rationale": "コード共有容易、デプロイ簡単、技術標準適用が一貫"
+      },
+      "database": {
+        "type": "RDS MySQL Multi-AZ（共有）",
+        "schema_separation": "kaigo_provider, kaigo_staff, kaigo_common",
+        "security": "IAM Policyで分離",
+        "note": "GCAS監査で指摘があればRDS分離を検討"
+      },
+      "security_boundary": {
+        "staff_api": "Internal ALB（庁内ネットワークのみ、GCAS準拠）",
+        "provider_api": "Public ALB（WAF保護、Cognito MFA認証）"
+      }
+    },
     "tech_stack": {
       "iac": "AWS CloudFormation",
       "accounts": "4アカウント（本番共通系、本番アプリ系、ステージング共通系、ステージングアプリ系）",
       "network": "Transit Gateway、Direct Connect（100Mbps × 2回線）",
-      "compute": "ECS Fargate + ALB（介護事業者用、市職員用、バッチ処理で分離）",
-      "database": "RDS MySQL Multi-AZ",
+      "compute": "ECS Fargate + ALB（Public ALB: 介護事業者用、Internal ALB: 市職員用）",
+      "database": "RDS MySQL Multi-AZ（共有、スキーマレベル分離）",
       "cache": "ElastiCache Redis",
       "storage": "S3 + CloudFront",
       "security": "Cognito + MFA、WAF、KMS",
@@ -184,16 +240,20 @@
     ]
   },
   "metadata": {
-    "version": "1.2.0",
-    "last_command": "docs-reorganization",
+    "version": "1.3.0",
+    "last_command": "application-architecture-finalized",
     "last_updated_by": "Claude (PM)",
     "last_session_date": "2025-11-09",
     "git_branch": "master",
     "recent_changes": [
+      "アプリケーションアーキテクチャ確定（4者協議: インフラArch, アプリArch, Consultant, PM）",
+      "ECS構成決定: 3サービス（provider-backend, staff-backend, batch）",
+      "セキュリティ境界分離: Internal ALB（市職員用）+ Public ALB（介護事業者用）",
+      "バックエンド設計: 統合.NET Coreアプリ + 名前空間分離",
+      "フロントエンド設計: Next.js SSG（S3+CloudFront） + 庁内Webサーバー",
+      "アプリケーション設計書ディレクトリ構成作成（基本設計/詳細設計）",
       "設計書をチーム別に完全分離（インフラ設計/ と アプリケーション設計/）",
-      "各チームが基本設計・詳細設計のツリーを独立して持つ構造に変更",
-      "CODEOWNERS更新（新しいディレクトリ構造に対応）",
-      "CloudFormationリファクタリング完了（stacks/ + templates/ + parameters/）"
+      "CODEOWNERS更新（新しいディレクトリ構造に対応）"
     ],
     "recent_commits": [
       "9f5816a: feat: Add Subnets stack parameters for staging",

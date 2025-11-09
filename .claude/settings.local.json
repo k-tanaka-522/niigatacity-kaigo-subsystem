@@ -27,7 +27,8 @@
       "Bash(test:*)",
       "Bash(chmod:*)",
       "Bash(xmllint:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(aws cloudformation list-stacks:*)"
     ],
     "deny": [],
     "ask": []
