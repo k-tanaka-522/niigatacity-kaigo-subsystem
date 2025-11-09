@@ -105,10 +105,4 @@ Outputs:
     Description: 'Transit Gateway Attachment ID'
     Value: !Ref TransitGatewayAttachment
     Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TGW-Attach-${VPCType}'
-
-  TransitGatewayAttachmentState:
-    Description: 'Transit Gateway Attachment State'
-    Value: !GetAtt TransitGatewayAttachment.State
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-TGW-Attach-State-${VPCType}'
+      Name: !Sub '${AWS::StackName}-TransitGatewayAttachmentId'
