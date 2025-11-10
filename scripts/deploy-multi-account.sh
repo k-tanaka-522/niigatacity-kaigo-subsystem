@@ -80,11 +80,11 @@ fi
 
 # Set account directory based on account type
 if [ "$ACCOUNT" == "common" ]; then
-    ACCOUNT_DIR="共通アカウント"
+    ACCOUNT_DIR="common"
     STACK_NAME="niigata-kaigo-${ENVIRONMENT}-common-network-stack"
     MAIN_TEMPLATE="infra/${ACCOUNT_DIR}/cloudformation/stacks/02-network/main.yaml"
 elif [ "$ACCOUNT" == "app" ]; then
-    ACCOUNT_DIR="appアカウント"
+    ACCOUNT_DIR="app"
     STACK_NAME="niigata-kaigo-${ENVIRONMENT}-app-network-stack"
     MAIN_TEMPLATE="infra/${ACCOUNT_DIR}/cloudformation/stacks/03-network/main.yaml"
 fi

@@ -4,7 +4,7 @@
 
 ```
 infra/
-├── 共通アカウント/                    # Common Account用のインフラコード
+├── common/                            # Common Account用のインフラコード
 │   └── cloudformation/
 │       ├── stacks/
 │       │   └── 02-network/
@@ -21,7 +21,7 @@ infra/
 │           ├── dev.json
 │           ├── staging.json
 │           └── production.json
-└── appアカウント/                     # App Account用のインフラコード
+└── app/                               # App Account用のインフラコード
     └── cloudformation/
         ├── stacks/
         │   └── 03-network/
@@ -106,7 +106,7 @@ aws cloudformation describe-stacks \
 
 ### 共通アカウント
 
-`infra/共通アカウント/cloudformation/parameters/{environment}.json`
+`infra/common/cloudformation/parameters/{environment}.json`
 
 ```json
 [
@@ -135,7 +135,7 @@ aws cloudformation describe-stacks \
 
 ### appアカウント
 
-`infra/appアカウント/cloudformation/parameters/{environment}.json`
+`infra/app/cloudformation/parameters/{environment}.json`
 
 ```json
 [
@@ -189,13 +189,13 @@ aws s3 mb s3://niigata-kaigo-cfn-templates-production --region ap-northeast-1
 
 ```bash
 # 共通アカウントのテンプレートをアップロード
-aws s3 sync infra/共通アカウント/cloudformation/templates/ \
-    s3://niigata-kaigo-cfn-templates-dev/共通アカウント/templates/ \
+aws s3 sync infra/common/cloudformation/templates/ \
+    s3://niigata-kaigo-cfn-templates-dev/common/templates/ \
     --region ap-northeast-1
 
 # appアカウントのテンプレートをアップロード
-aws s3 sync infra/appアカウント/cloudformation/templates/ \
-    s3://niigata-kaigo-cfn-templates-dev/appアカウント/templates/ \
+aws s3 sync infra/app/cloudformation/templates/ \
+    s3://niigata-kaigo-cfn-templates-dev/app/templates/ \
     --region ap-northeast-1
 ```
 

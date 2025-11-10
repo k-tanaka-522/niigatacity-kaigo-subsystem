@@ -56,7 +56,14 @@
       "Bash(aws ec2 describe-vpcs:*)",
       "Bash(aws ec2 describe-transit-gateways:*)",
       "Bash(aws ec2 describe-nat-gateways:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(aws s3:*)",
+      "Bash(aws s3 mb:*)",
+      "Bash(./scripts/upload-templates.sh:*)",
+      "Bash(./scripts/deploy-multi-account.sh:*)",
+      "Bash(aws ec2 describe-transit-gateway-route-tables:*)",
+      "Bash(aws ec2 describe-transit-gateway-attachments:*)",
+      "Bash(aws sts get-caller-identity:*)"
     ],
     "deny": [],
     "ask": []

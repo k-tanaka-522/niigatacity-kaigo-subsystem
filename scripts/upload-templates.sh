@@ -90,29 +90,29 @@ else
     success "Bucket exists: s3://$BUCKET_NAME"
 fi
 
-# Step 2: Upload templates for 共通アカウント
+# Step 2: Upload templates for common account
 info "=================================================="
-info "Uploading templates for 共通アカウント..."
+info "Uploading templates for common account..."
 info "=================================================="
 
-aws s3 sync "infra/共通アカウント/cloudformation/templates/" \
-    "s3://$BUCKET_NAME/共通アカウント/templates/" \
+aws s3 sync "infra/common/cloudformation/templates/" \
+    "s3://$BUCKET_NAME/common/templates/" \
     --region "$REGION" \
     --delete
 
-success "Templates uploaded: 共通アカウント"
+success "Templates uploaded: common account"
 
-# Step 3: Upload templates for appアカウント
+# Step 3: Upload templates for app account
 info "=================================================="
-info "Uploading templates for appアカウント..."
+info "Uploading templates for app account..."
 info "=================================================="
 
-aws s3 sync "infra/appアカウント/cloudformation/templates/" \
-    "s3://$BUCKET_NAME/appアカウント/templates/" \
+aws s3 sync "infra/app/cloudformation/templates/" \
+    "s3://$BUCKET_NAME/app/templates/" \
     --region "$REGION" \
     --delete
 
-success "Templates uploaded: appアカウント"
+success "Templates uploaded: app account"
 
 # Step 4: List uploaded files
 info "=================================================="
