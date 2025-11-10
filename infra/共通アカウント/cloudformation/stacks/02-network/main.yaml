@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Network Stack - 2 VPCs (Common + App) with Transit Gateway (Multi-Account ready)'
+Description: 'Common Account Network Stack - Transit Gateway + Common VPC'
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -13,7 +13,6 @@ Metadata:
           default: 'VPC CIDR Configuration'
         Parameters:
           - CommonVPCCidr
-          - AppVPCCidr
       - Label:
           default: 'Transit Gateway Configuration'
         Parameters:
@@ -44,12 +43,6 @@ Parameters:
     Default: 10.100.0.0/16
     AllowedPattern: ^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}\/16)$
 
-  AppVPCCidr:
-    Type: String
-    Description: 'App VPC CIDR block'
-    Default: 10.101.0.0/16
-    AllowedPattern: ^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}\/16)$
-
   EnableTransitGateway:
     Type: String
     Description: 'Enable Transit Gateway (Yes for multi-VPC, No for single VPC)'
@@ -74,7 +67,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: CreateTransitGateway
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/transit-gateway.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/transit-gateway.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Ref ProjectName
@@ -94,7 +87,7 @@ Resources:
   CommonVPCStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/vpc-and-igw.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/vpc-and-igw.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Sub '${ProjectName}-common'
@@ -114,38 +107,13 @@ Resources:
           Value: CloudFormation
 
   # ==========================================================================
-  # App VPC + Internet Gateway
-  # ==========================================================================
-  AppVPCStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/vpc-and-igw.yaml'
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-        ProjectName: !Sub '${ProjectName}-app'
-        VPCCidr: !Ref AppVPCCidr
-        EnableDnsSupport: 'true'
-        EnableDnsHostnames: 'true'
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc-app-stack'
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: VPCType
-          Value: app
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ==========================================================================
   # Common VPC Subnets
   # ==========================================================================
   CommonSubnetsStack:
     Type: AWS::CloudFormation::Stack
     DependsOn: CommonVPCStack
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/subnets.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/subnets.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Sub '${ProjectName}-common'
@@ -164,38 +132,13 @@ Resources:
           Value: CloudFormation
 
   # ==========================================================================
-  # App VPC Subnets
-  # ==========================================================================
-  AppSubnetsStack:
-    Type: AWS::CloudFormation::Stack
-    DependsOn: AppVPCStack
-    Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/subnets.yaml'
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-        ProjectName: !Sub '${ProjectName}-app'
-        VPCId: !GetAtt AppVPCStack.Outputs.VPCId
-        VPCCidr: !Ref AppVPCCidr
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-subnets-app-stack'
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: VPCType
-          Value: app
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ==========================================================================
   # Common VPC NAT Gateways
   # ==========================================================================
   CommonNATGatewaysStack:
     Type: AWS::CloudFormation::Stack
     DependsOn: CommonSubnetsStack
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/nat-gateways.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/nat-gateways.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Sub '${ProjectName}-common'
@@ -214,31 +157,6 @@ Resources:
           Value: CloudFormation
 
   # ==========================================================================
-  # App VPC NAT Gateways
-  # ==========================================================================
-  AppNATGatewaysStack:
-    Type: AWS::CloudFormation::Stack
-    DependsOn: AppSubnetsStack
-    Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/nat-gateways.yaml'
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-        ProjectName: !Sub '${ProjectName}-app'
-        PublicSubnet1Id: !GetAtt AppSubnetsStack.Outputs.PublicSubnet1Id
-        PublicSubnet2Id: !GetAtt AppSubnetsStack.Outputs.PublicSubnet2Id
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-nat-app-stack'
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: VPCType
-          Value: app
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ==========================================================================
   # Transit Gateway Attachment - Common VPC
   # ==========================================================================
   CommonTGWAttachmentStack:
@@ -248,7 +166,7 @@ Resources:
       - TransitGatewayStack
       - CommonSubnetsStack
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/transit-gateway-attachment.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/transit-gateway-attachment.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Ref ProjectName
@@ -273,40 +191,6 @@ Resources:
           Value: CloudFormation
 
   # ==========================================================================
-  # Transit Gateway Attachment - App VPC
-  # ==========================================================================
-  AppTGWAttachmentStack:
-    Type: AWS::CloudFormation::Stack
-    Condition: CreateTransitGateway
-    DependsOn:
-      - TransitGatewayStack
-      - AppSubnetsStack
-    Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/transit-gateway-attachment.yaml'
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-        ProjectName: !Ref ProjectName
-        VPCType: app
-        TransitGatewayId: !GetAtt TransitGatewayStack.Outputs.TransitGatewayId
-        TransitGatewayRouteTableId: !GetAtt TransitGatewayStack.Outputs.AppRouteTableId
-        VPCId: !GetAtt AppVPCStack.Outputs.VPCId
-        SubnetIds: !Join
-          - ','
-          - - !GetAtt AppSubnetsStack.Outputs.PrivateSubnet1Id
-            - !GetAtt AppSubnetsStack.Outputs.PrivateSubnet2Id
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-tgw-attach-app-stack'
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: VPCType
-          Value: app
-        - Key: ManagedBy
-          Value: CloudFormation
-
-  # ==========================================================================
   # Common VPC Route Tables (with TGW routes if enabled)
   # ==========================================================================
   CommonRouteTablesStack:
@@ -316,7 +200,7 @@ Resources:
       - CommonSubnetsStack
       - CommonNATGatewaysStack
     Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/route-tables.yaml'
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/共通アカウント/templates/network/route-tables.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Sub '${ProjectName}-common'
@@ -340,44 +224,8 @@ Resources:
         - Key: ManagedBy
           Value: CloudFormation
 
-  # ==========================================================================
-  # App VPC Route Tables (with TGW routes if enabled)
-  # ==========================================================================
-  AppRouteTablesStack:
-    Type: AWS::CloudFormation::Stack
-    DependsOn:
-      - AppVPCStack
-      - AppSubnetsStack
-      - AppNATGatewaysStack
-    Properties:
-      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/templates/network/route-tables.yaml'
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-        ProjectName: !Sub '${ProjectName}-app'
-        VPCId: !GetAtt AppVPCStack.Outputs.VPCId
-        InternetGatewayId: !GetAtt AppVPCStack.Outputs.InternetGatewayId
-        NATGateway1Id: !GetAtt AppNATGatewaysStack.Outputs.NATGateway1Id
-        NATGateway2Id: !GetAtt AppNATGatewaysStack.Outputs.NATGateway2Id
-        PublicSubnet1Id: !GetAtt AppSubnetsStack.Outputs.PublicSubnet1Id
-        PublicSubnet2Id: !GetAtt AppSubnetsStack.Outputs.PublicSubnet2Id
-        PrivateSubnet1Id: !GetAtt AppSubnetsStack.Outputs.PrivateSubnet1Id
-        PrivateSubnet2Id: !GetAtt AppSubnetsStack.Outputs.PrivateSubnet2Id
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-${EnvironmentName}-rt-app-stack'
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: VPCType
-          Value: app
-        - Key: ManagedBy
-          Value: CloudFormation
-
 Outputs:
   # Transit Gateway Outputs
-  # Note: TransitGatewayId is exported by the nested TransitGatewayStack
-  # We don't re-export it here to avoid duplicate export names
   TransitGatewayId:
     Condition: CreateTransitGateway
     Description: 'Transit Gateway ID'
@@ -407,40 +255,3 @@ Outputs:
     Value: !GetAtt CommonSubnetsStack.Outputs.PrivateSubnet2Id
     Export:
       Name: !Sub '${ProjectName}-${EnvironmentName}-CommonPrivateSubnet2Id'
-
-  # App VPC Outputs
-  AppVPCId:
-    Description: 'App VPC ID'
-    Value: !GetAtt AppVPCStack.Outputs.VPCId
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppVpcId'
-
-  AppVPCCidr:
-    Description: 'App VPC CIDR'
-    Value: !Ref AppVPCCidr
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppVpcCidr'
-
-  AppPrivateSubnet1Id:
-    Description: 'App VPC Private Subnet 1 ID'
-    Value: !GetAtt AppSubnetsStack.Outputs.PrivateSubnet1Id
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppPrivateSubnet1Id'
-
-  AppPrivateSubnet2Id:
-    Description: 'App VPC Private Subnet 2 ID'
-    Value: !GetAtt AppSubnetsStack.Outputs.PrivateSubnet2Id
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppPrivateSubnet2Id'
-
-  AppPublicSubnet1Id:
-    Description: 'App VPC Public Subnet 1 ID'
-    Value: !GetAtt AppSubnetsStack.Outputs.PublicSubnet1Id
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppPublicSubnet1Id'
-
-  AppPublicSubnet2Id:
-    Description: 'App VPC Public Subnet 2 ID'
-    Value: !GetAtt AppSubnetsStack.Outputs.PublicSubnet2Id
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-AppPublicSubnet2Id'

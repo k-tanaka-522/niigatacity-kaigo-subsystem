@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "production"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "AppVPCCidr",
+    "ParameterValue": "10.101.0.0/16"
+  },
+  {
+    "ParameterKey": "TransitGatewayId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "TransitGatewayRouteTableId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-production"
+  }
+]
