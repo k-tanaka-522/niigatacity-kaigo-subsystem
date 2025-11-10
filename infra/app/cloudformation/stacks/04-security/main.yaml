@@ -1,0 +1,144 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security Stack - Security Groups and KMS Keys'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  VpcId:
+    Type: String
+    Description: VPC ID where security groups will be created
+
+  AllowedCidrBlocks:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of CIDR blocks allowed to access ALB
+    Default: "0.0.0.0/0"
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # Security Groups Stack
+  SecurityGroupsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/security/security-groups.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        VpcId: !Ref VpcId
+        AllowedCidrBlocks: !Join [',', !Ref AllowedCidrBlocks]
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-security-groups-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # KMS Keys Stack
+  KMSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/security/kms.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-kms-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # Security Group Outputs
+  ALBSecurityGroupId:
+    Description: Security Group ID for ALB
+    Value: !GetAtt SecurityGroupsStack.Outputs.ALBSecurityGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-sg-id'
+
+  ECSSecurityGroupId:
+    Description: Security Group ID for ECS
+    Value: !GetAtt SecurityGroupsStack.Outputs.ECSSecurityGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ecs-sg-id'
+
+  RDSSecurityGroupId:
+    Description: Security Group ID for RDS
+    Value: !GetAtt SecurityGroupsStack.Outputs.RDSSecurityGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-sg-id'
+
+  ElastiCacheSecurityGroupId:
+    Description: Security Group ID for ElastiCache
+    Value: !GetAtt SecurityGroupsStack.Outputs.ElastiCacheSecurityGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-sg-id'
+
+  VPCEndpointSecurityGroupId:
+    Description: Security Group ID for VPC Endpoints
+    Value: !GetAtt SecurityGroupsStack.Outputs.VPCEndpointSecurityGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-vpce-sg-id'
+
+  # KMS Outputs
+  RDSKMSKeyId:
+    Description: KMS Key ID for RDS encryption
+    Value: !GetAtt KMSStack.Outputs.RDSKMSKeyId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-id'
+
+  RDSKMSKeyArn:
+    Description: KMS Key ARN for RDS encryption
+    Value: !GetAtt KMSStack.Outputs.RDSKMSKeyArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-arn'
+
+  S3KMSKeyId:
+    Description: KMS Key ID for S3 encryption
+    Value: !GetAtt KMSStack.Outputs.S3KMSKeyId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-id'
+
+  S3KMSKeyArn:
+    Description: KMS Key ARN for S3 encryption
+    Value: !GetAtt KMSStack.Outputs.S3KMSKeyArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-arn'
+
+  ElastiCacheKMSKeyId:
+    Description: KMS Key ID for ElastiCache encryption
+    Value: !GetAtt KMSStack.Outputs.ElastiCacheKMSKeyId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-id'
+
+  ElastiCacheKMSKeyArn:
+    Description: KMS Key ARN for ElastiCache encryption
+    Value: !GetAtt KMSStack.Outputs.ElastiCacheKMSKeyArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-arn'
+
+  SecretsManagerKMSKeyId:
+    Description: KMS Key ID for Secrets Manager encryption
+    Value: !GetAtt KMSStack.Outputs.SecretsManagerKMSKeyId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-id'
+
+  SecretsManagerKMSKeyArn:
+    Description: KMS Key ARN for Secrets Manager encryption
+    Value: !GetAtt KMSStack.Outputs.SecretsManagerKMSKeyArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-arn'

@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-0d0c0e2978cf20f62"
+  },
+  {
+    "ParameterKey": "AllowedCidrBlocks",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]

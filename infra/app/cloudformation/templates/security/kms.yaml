@@ -1,0 +1,274 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'KMS keys for RDS, S3, and ElastiCache encryption'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+Resources:
+  # KMS Key for RDS encryption
+  RDSKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for RDS MySQL encryption - ${EnvironmentName}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Allow root account full access
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+          # Allow RDS service to use the key
+          - Sid: Allow RDS to use the key
+            Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'rds.${AWS::Region}.amazonaws.com'
+
+          # Allow CloudWatch Logs
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-kms'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  RDSKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${EnvironmentName}-rds'
+      TargetKeyId: !Ref RDSKMSKey
+
+  # KMS Key for S3 encryption
+  S3KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for S3 bucket encryption - ${EnvironmentName}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Allow root account full access
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+          # Allow S3 service to use the key
+          - Sid: Allow S3 to use the key
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 's3.${AWS::Region}.amazonaws.com'
+
+          # Allow CloudWatch Logs
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-s3-kms'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  S3KMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${EnvironmentName}-s3'
+      TargetKeyId: !Ref S3KMSKey
+
+  # KMS Key for ElastiCache encryption
+  ElastiCacheKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ElastiCache Redis encryption - ${EnvironmentName}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Allow root account full access
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+          # Allow ElastiCache service to use the key
+          - Sid: Allow ElastiCache to use the key
+            Effect: Allow
+            Principal:
+              Service: elasticache.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'elasticache.${AWS::Region}.amazonaws.com'
+
+          # Allow CloudWatch Logs
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+            Resource: '*'
+
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ElastiCacheKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${EnvironmentName}-elasticache'
+      TargetKeyId: !Ref ElastiCacheKMSKey
+
+  # KMS Key for Secrets Manager
+  SecretsManagerKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for Secrets Manager encryption - ${EnvironmentName}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          # Allow root account full access
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+
+          # Allow Secrets Manager service to use the key
+          - Sid: Allow Secrets Manager to use the key
+            Effect: Allow
+            Principal:
+              Service: secretsmanager.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
+
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  SecretsManagerKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${EnvironmentName}-secrets'
+      TargetKeyId: !Ref SecretsManagerKMSKey
+
+Outputs:
+  RDSKMSKeyId:
+    Description: KMS Key ID for RDS encryption
+    Value: !Ref RDSKMSKey
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-id'
+
+  RDSKMSKeyArn:
+    Description: KMS Key ARN for RDS encryption
+    Value: !GetAtt RDSKMSKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-arn'
+
+  S3KMSKeyId:
+    Description: KMS Key ID for S3 encryption
+    Value: !Ref S3KMSKey
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-id'
+
+  S3KMSKeyArn:
+    Description: KMS Key ARN for S3 encryption
+    Value: !GetAtt S3KMSKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-arn'
+
+  ElastiCacheKMSKeyId:
+    Description: KMS Key ID for ElastiCache encryption
+    Value: !Ref ElastiCacheKMSKey
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-id'
+
+  ElastiCacheKMSKeyArn:
+    Description: KMS Key ARN for ElastiCache encryption
+    Value: !GetAtt ElastiCacheKMSKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-arn'
+
+  SecretsManagerKMSKeyId:
+    Description: KMS Key ID for Secrets Manager encryption
+    Value: !Ref SecretsManagerKMSKey
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-id'
+
+  SecretsManagerKMSKeyArn:
+    Description: KMS Key ARN for Secrets Manager encryption
+    Value: !GetAtt SecretsManagerKMSKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-arn'

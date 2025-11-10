@@ -1,0 +1,203 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security Groups for ALB, ECS, RDS, and ElastiCache'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  VpcId:
+    Type: String
+    Description: VPC ID where security groups will be created
+
+  # CIDR blocks for allowed access
+  AllowedCidrBlocks:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of CIDR blocks allowed to access ALB
+    Default: "0.0.0.0/0"
+
+Resources:
+  # ALB Security Group
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${EnvironmentName}-alb-sg'
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # HTTPS from Internet
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Select [0, !Ref AllowedCidrBlocks]
+          Description: HTTPS from Internet
+        # HTTP from Internet (redirect to HTTPS)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Select [0, !Ref AllowedCidrBlocks]
+          Description: HTTP from Internet
+      SecurityGroupEgress:
+        # Allow all outbound to ECS
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alb-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Security Group
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${EnvironmentName}-ecs-sg'
+      GroupDescription: Security group for ECS Fargate tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # Allow traffic from ALB only
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: HTTP from ALB
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: HTTPS from ALB
+      SecurityGroupEgress:
+        # Allow all outbound (for RDS, ElastiCache, Internet via NAT)
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-ecs-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # RDS Security Group
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${EnvironmentName}-rds-sg'
+      GroupDescription: Security group for RDS MySQL
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # Allow MySQL traffic from ECS only
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: MySQL from ECS tasks
+      SecurityGroupEgress:
+        # No outbound rules needed for RDS
+        - IpProtocol: -1
+          CidrIp: 127.0.0.1/32
+          Description: Deny all outbound (not needed for RDS)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Security Group
+  ElastiCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${EnvironmentName}-elasticache-sg'
+      GroupDescription: Security group for ElastiCache Redis
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # Allow Redis traffic from ECS only
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: Redis from ECS tasks
+      SecurityGroupEgress:
+        # No outbound rules needed for ElastiCache
+        - IpProtocol: -1
+          CidrIp: 127.0.0.1/32
+          Description: Deny all outbound (not needed for ElastiCache)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-elasticache-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # VPC Endpoint Security Group (for S3, Secrets Manager, etc.)
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${EnvironmentName}-vpce-sg'
+      GroupDescription: Security group for VPC Endpoints
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # Allow HTTPS from ECS
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+          Description: HTTPS from ECS tasks
+      SecurityGroupEgress:
+        # No outbound rules needed
+        - IpProtocol: -1
+          CidrIp: 127.0.0.1/32
+          Description: Deny all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpce-sg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  ALBSecurityGroupId:
+    Description: Security Group ID for ALB
+    Value: !Ref ALBSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-sg-id'
+
+  ECSSecurityGroupId:
+    Description: Security Group ID for ECS
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ecs-sg-id'
+
+  RDSSecurityGroupId:
+    Description: Security Group ID for RDS
+    Value: !Ref RDSSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-sg-id'
+
+  ElastiCacheSecurityGroupId:
+    Description: Security Group ID for ElastiCache
+    Value: !Ref ElastiCacheSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-sg-id'
+
+  VPCEndpointSecurityGroupId:
+    Description: Security Group ID for VPC Endpoints
+    Value: !Ref VPCEndpointSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-vpce-sg-id'
