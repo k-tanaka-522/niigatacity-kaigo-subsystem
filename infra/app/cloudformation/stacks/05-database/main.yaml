@@ -1,0 +1,233 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Database Stack - RDS MySQL and ElastiCache Redis'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet IDs for RDS
+
+  CacheSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet IDs for ElastiCache
+
+  RDSSecurityGroupId:
+    Type: String
+    Description: Security Group ID for RDS
+
+  ElastiCacheSecurityGroupId:
+    Type: String
+    Description: Security Group ID for ElastiCache
+
+  RDSKMSKeyId:
+    Type: String
+    Description: KMS Key ID for RDS encryption
+
+  ElastiCacheKMSKeyId:
+    Type: String
+    Description: KMS Key ID for ElastiCache encryption
+
+  # RDS Parameters
+  DBInstanceClass:
+    Type: String
+    Description: RDS instance class
+    Default: db.t3.medium
+
+  DBAllocatedStorage:
+    Type: Number
+    Description: Allocated storage in GB
+    Default: 100
+
+  DBName:
+    Type: String
+    Description: Initial database name
+    Default: kaigoapp
+
+  DBMasterUsername:
+    Type: String
+    Description: Master username for RDS
+    Default: admin
+    NoEcho: true
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Backup retention period in days
+    Default: 7
+
+  PreferredBackupWindow:
+    Type: String
+    Description: Preferred backup window (UTC)
+    Default: "17:00-18:00"
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Preferred maintenance window (UTC)
+    Default: "sun:18:00-sun:19:00"
+
+  MultiAZ:
+    Type: String
+    Description: Enable Multi-AZ deployment
+    Default: "true"
+
+  # ElastiCache Parameters
+  CacheNodeType:
+    Type: String
+    Description: ElastiCache node type
+    Default: cache.t3.medium
+
+  NumCacheNodes:
+    Type: Number
+    Description: Number of cache nodes
+    Default: 2
+
+  AutomaticFailoverEnabled:
+    Type: String
+    Description: Enable automatic failover
+    Default: "true"
+
+  SnapshotRetentionLimit:
+    Type: Number
+    Description: Number of days to retain automatic snapshots
+    Default: 7
+
+  SnapshotWindow:
+    Type: String
+    Description: Daily time range for snapshots (UTC)
+    Default: "17:00-18:00"
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # RDS MySQL Stack
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/database/rds-mysql.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        DBSubnetIds: !Join [',', !Ref DBSubnetIds]
+        RDSSecurityGroupId: !Ref RDSSecurityGroupId
+        KMSKeyId: !Ref RDSKMSKeyId
+        DBInstanceClass: !Ref DBInstanceClass
+        DBAllocatedStorage: !Ref DBAllocatedStorage
+        DBName: !Ref DBName
+        DBMasterUsername: !Ref DBMasterUsername
+        BackupRetentionPeriod: !Ref BackupRetentionPeriod
+        PreferredBackupWindow: !Ref PreferredBackupWindow
+        PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+        MultiAZ: !Ref MultiAZ
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Redis Stack
+  ElastiCacheStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/database/elasticache-redis.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        CacheSubnetIds: !Join [',', !Ref CacheSubnetIds]
+        ElastiCacheSecurityGroupId: !Ref ElastiCacheSecurityGroupId
+        KMSKeyId: !Ref ElastiCacheKMSKeyId
+        CacheNodeType: !Ref CacheNodeType
+        NumCacheNodes: !Ref NumCacheNodes
+        AutomaticFailoverEnabled: !Ref AutomaticFailoverEnabled
+        SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
+        PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+        SnapshotWindow: !Ref SnapshotWindow
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-elasticache-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # RDS Outputs
+  DBInstanceId:
+    Description: RDS Instance ID
+    Value: !GetAtt RDSStack.Outputs.DBInstanceId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-instance-id'
+
+  DBInstanceEndpoint:
+    Description: RDS Instance Endpoint
+    Value: !GetAtt RDSStack.Outputs.DBInstanceEndpoint
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-endpoint'
+
+  DBInstancePort:
+    Description: RDS Instance Port
+    Value: !GetAtt RDSStack.Outputs.DBInstancePort
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-port'
+
+  DBName:
+    Description: Database Name
+    Value: !GetAtt RDSStack.Outputs.DBName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-dbname'
+
+  DBMasterPasswordSecretArn:
+    Description: ARN of the Secrets Manager secret containing master password
+    Value: !GetAtt RDSStack.Outputs.DBMasterPasswordSecretArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-master-secret-arn'
+
+  # ElastiCache Outputs
+  ReplicationGroupId:
+    Description: ElastiCache Replication Group ID
+    Value: !GetAtt ElastiCacheStack.Outputs.ReplicationGroupId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-replication-group-id'
+
+  RedisPrimaryEndpoint:
+    Description: Primary endpoint for Redis cluster
+    Value: !GetAtt ElastiCacheStack.Outputs.PrimaryEndpoint
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-primary-endpoint'
+
+  RedisPrimaryPort:
+    Description: Primary port for Redis cluster
+    Value: !GetAtt ElastiCacheStack.Outputs.PrimaryPort
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-primary-port'
+
+  RedisReaderEndpoint:
+    Description: Reader endpoint for Redis cluster
+    Value: !GetAtt ElastiCacheStack.Outputs.ReaderEndpoint
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-reader-endpoint'
+
+  RedisReaderPort:
+    Description: Reader port for Redis cluster
+    Value: !GetAtt ElastiCacheStack.Outputs.ReaderPort
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-reader-port'
+
+  RedisAuthTokenSecretArn:
+    Description: ARN of the Secrets Manager secret containing Redis AUTH token
+    Value: !GetAtt ElastiCacheStack.Outputs.AuthTokenSecretArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-auth-token-arn'

@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ElastiCache Redis with automatic failover and encryption'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  CacheSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet IDs for ElastiCache
+
+  ElastiCacheSecurityGroupId:
+    Type: String
+    Description: Security Group ID for ElastiCache
+
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for ElastiCache encryption
+
+  CacheNodeType:
+    Type: String
+    Description: ElastiCache node type
+    Default: cache.t3.medium
+    AllowedValues:
+      - cache.t3.micro
+      - cache.t3.small
+      - cache.t3.medium
+      - cache.t4g.micro
+      - cache.t4g.small
+      - cache.t4g.medium
+      - cache.r5.large
+      - cache.r5.xlarge
+      - cache.r6g.large
+      - cache.r6g.xlarge
+
+  NumCacheNodes:
+    Type: Number
+    Description: Number of cache nodes (2 for automatic failover)
+    Default: 2
+    MinValue: 2
+    MaxValue: 6
+
+  AutomaticFailoverEnabled:
+    Type: String
+    Description: Enable automatic failover
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  SnapshotRetentionLimit:
+    Type: Number
+    Description: Number of days to retain automatic snapshots
+    Default: 7
+    MinValue: 0
+    MaxValue: 35
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Preferred maintenance window (UTC)
+    Default: "sun:18:00-sun:19:00"
+
+  SnapshotWindow:
+    Type: String
+    Description: Daily time range for snapshots (UTC)
+    Default: "17:00-18:00"
+
+Resources:
+  # ElastiCache Subnet Group
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub '${ProjectName}-${EnvironmentName}-cache-subnet-group'
+      Description: !Sub 'Subnet group for ${ProjectName} ${EnvironmentName} ElastiCache'
+      SubnetIds: !Ref CacheSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cache-subnet-group'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Parameter Group
+  CacheParameterGroup:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis7
+      Description: !Sub 'Parameter group for ${ProjectName} ${EnvironmentName} Redis 7'
+      Properties:
+        maxmemory-policy: allkeys-lru
+        timeout: "300"
+        tcp-keepalive: "300"
+        notify-keyspace-events: "Ex"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-redis7-params'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ElastiCache Replication Group
+  CacheReplicationGroup:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupId: !Sub '${ProjectName}-${EnvironmentName}-redis'
+      ReplicationGroupDescription: !Sub 'Redis cluster for ${ProjectName} ${EnvironmentName}'
+      Engine: redis
+      EngineVersion: "7.0"
+      CacheNodeType: !Ref CacheNodeType
+      NumCacheClusters: !Ref NumCacheNodes
+      AutomaticFailoverEnabled: !Ref AutomaticFailoverEnabled
+      MultiAZEnabled: true
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      CacheParameterGroupName: !Ref CacheParameterGroup
+      SecurityGroupIds:
+        - !Ref ElastiCacheSecurityGroupId
+      # Encryption settings
+      AtRestEncryptionEnabled: true
+      KmsKeyId: !Ref KMSKeyId
+      TransitEncryptionEnabled: true
+      TransitEncryptionMode: required
+      AuthTokenEnabled: true
+      # Backup settings
+      SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
+      SnapshotWindow: !Ref SnapshotWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      # Logging
+      LogDeliveryConfigurations:
+        - DestinationDetails:
+            CloudWatchLogsDetails:
+              LogGroup: !Ref CacheLogGroup
+          DestinationType: cloudwatch-logs
+          LogFormat: json
+          LogType: slow-log
+        - DestinationDetails:
+            CloudWatchLogsDetails:
+              LogGroup: !Ref CacheLogGroup
+          DestinationType: cloudwatch-logs
+          LogFormat: json
+          LogType: engine-log
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-redis'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Auth Token Secret
+  AuthTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-auth-token'
+      Description: !Sub 'Redis AUTH token for ${ProjectName} ${EnvironmentName}'
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\<>(){}[]|`'
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-redis-auth-token'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Log Group for ElastiCache logs
+  CacheLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/elasticache/${ProjectName}-${EnvironmentName}-redis'
+      RetentionInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-redis-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  ReplicationGroupId:
+    Description: ElastiCache Replication Group ID
+    Value: !Ref CacheReplicationGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-replication-group-id'
+
+  PrimaryEndpoint:
+    Description: Primary endpoint for Redis cluster
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-primary-endpoint'
+
+  PrimaryPort:
+    Description: Primary port for Redis cluster
+    Value: !GetAtt CacheReplicationGroup.PrimaryEndPoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-primary-port'
+
+  ReaderEndpoint:
+    Description: Reader endpoint for Redis cluster
+    Value: !GetAtt CacheReplicationGroup.ReaderEndPoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-reader-endpoint'
+
+  ReaderPort:
+    Description: Reader port for Redis cluster
+    Value: !GetAtt CacheReplicationGroup.ReaderEndPoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-reader-port'
+
+  AuthTokenSecretArn:
+    Description: ARN of the Secrets Manager secret containing Redis AUTH token
+    Value: !Ref AuthTokenSecret
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-redis-auth-token-arn'

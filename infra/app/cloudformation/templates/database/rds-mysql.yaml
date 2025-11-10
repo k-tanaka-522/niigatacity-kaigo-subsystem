@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS MySQL Multi-AZ with automated backups'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  DBSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet IDs for RDS
+
+  RDSSecurityGroupId:
+    Type: String
+    Description: Security Group ID for RDS
+
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for RDS encryption
+
+  DBInstanceClass:
+    Type: String
+    Description: RDS instance class
+    Default: db.t3.medium
+    AllowedValues:
+      - db.t3.micro
+      - db.t3.small
+      - db.t3.medium
+      - db.t3.large
+      - db.r5.large
+      - db.r5.xlarge
+      - db.r5.2xlarge
+
+  DBAllocatedStorage:
+    Type: Number
+    Description: Allocated storage in GB
+    Default: 100
+    MinValue: 20
+    MaxValue: 16384
+
+  DBName:
+    Type: String
+    Description: Initial database name
+    Default: kaigoapp
+
+  DBMasterUsername:
+    Type: String
+    Description: Master username for RDS
+    Default: admin
+    NoEcho: true
+
+  BackupRetentionPeriod:
+    Type: Number
+    Description: Backup retention period in days
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+
+  PreferredBackupWindow:
+    Type: String
+    Description: Preferred backup window (UTC)
+    Default: "17:00-18:00"
+
+  PreferredMaintenanceWindow:
+    Type: String
+    Description: Preferred maintenance window (UTC)
+    Default: "sun:18:00-sun:19:00"
+
+  MultiAZ:
+    Type: String
+    Description: Enable Multi-AZ deployment
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+Resources:
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupName: !Sub '${ProjectName}-${EnvironmentName}-db-subnet-group'
+      DBSubnetGroupDescription: !Sub 'Subnet group for ${ProjectName} ${EnvironmentName} RDS'
+      SubnetIds: !Ref DBSubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-db-subnet-group'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # DB Parameter Group
+  DBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      DBParameterGroupName: !Sub '${ProjectName}-${EnvironmentName}-mysql80-params'
+      Description: !Sub 'Parameter group for ${ProjectName} ${EnvironmentName} MySQL 8.0'
+      Family: mysql8.0
+      Parameters:
+        character_set_server: utf8mb4
+        collation_server: utf8mb4_unicode_ci
+        max_connections: "500"
+        slow_query_log: "1"
+        long_query_time: "2"
+        log_output: FILE
+        general_log: "0"
+        time_zone: Asia/Tokyo
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-mysql80-params'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # DB Master Password Secret
+  DBMasterPasswordSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-master-password'
+      Description: !Sub 'RDS master password for ${ProjectName} ${EnvironmentName}'
+      GenerateSecretString:
+        SecretStringTemplate: !Sub '{"username": "${DBMasterUsername}"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+        RequireEachIncludedType: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-master-password'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # RDS Instance
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${ProjectName}-${EnvironmentName}-mysql'
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: mysql
+      EngineVersion: "8.0.35"
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DBMasterPasswordSecret}:SecretString:password}}'
+      AllocatedStorage: !Ref DBAllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      KmsKeyId: !Ref KMSKeyId
+      DBName: !Ref DBName
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      DBParameterGroupName: !Ref DBParameterGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroupId
+      MultiAZ: !Ref MultiAZ
+      BackupRetentionPeriod: !Ref BackupRetentionPeriod
+      PreferredBackupWindow: !Ref PreferredBackupWindow
+      PreferredMaintenanceWindow: !Ref PreferredMaintenanceWindow
+      CopyTagsToSnapshot: true
+      EnableCloudwatchLogsExports:
+        - error
+        - general
+        - slowquery
+      DeletionProtection: !If
+        - IsProduction
+        - true
+        - false
+      PubliclyAccessible: false
+      EnableIAMDatabaseAuthentication: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-mysql'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Secret Target Attachment
+  SecretTargetAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DBMasterPasswordSecret
+      TargetId: !Ref DBInstance
+      TargetType: AWS::RDS::DBInstance
+
+Conditions:
+  IsProduction: !Equals [!Ref EnvironmentName, 'production']
+
+Outputs:
+  DBInstanceId:
+    Description: RDS Instance ID
+    Value: !Ref DBInstance
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-instance-id'
+
+  DBInstanceEndpoint:
+    Description: RDS Instance Endpoint
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-endpoint'
+
+  DBInstancePort:
+    Description: RDS Instance Port
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-port'
+
+  DBName:
+    Description: Database Name
+    Value: !Ref DBName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-dbname'
+
+  DBMasterPasswordSecretArn:
+    Description: ARN of the Secrets Manager secret containing master password
+    Value: !Ref DBMasterPasswordSecret
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-master-secret-arn'

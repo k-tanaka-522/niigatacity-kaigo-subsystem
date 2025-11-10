@@ -1,0 +1,90 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "DBSubnetIds",
+    "ParameterValue": "subnet-PLACEHOLDER1,subnet-PLACEHOLDER2"
+  },
+  {
+    "ParameterKey": "CacheSubnetIds",
+    "ParameterValue": "subnet-PLACEHOLDER1,subnet-PLACEHOLDER2"
+  },
+  {
+    "ParameterKey": "RDSSecurityGroupId",
+    "ParameterValue": "sg-PLACEHOLDER"
+  },
+  {
+    "ParameterKey": "ElastiCacheSecurityGroupId",
+    "ParameterValue": "sg-PLACEHOLDER"
+  },
+  {
+    "ParameterKey": "RDSKMSKeyId",
+    "ParameterValue": "PLACEHOLDER-KMS-KEY-ID"
+  },
+  {
+    "ParameterKey": "ElastiCacheKMSKeyId",
+    "ParameterValue": "PLACEHOLDER-KMS-KEY-ID"
+  },
+  {
+    "ParameterKey": "DBInstanceClass",
+    "ParameterValue": "db.t3.medium"
+  },
+  {
+    "ParameterKey": "DBAllocatedStorage",
+    "ParameterValue": "100"
+  },
+  {
+    "ParameterKey": "DBName",
+    "ParameterValue": "kaigoapp"
+  },
+  {
+    "ParameterKey": "DBMasterUsername",
+    "ParameterValue": "admin"
+  },
+  {
+    "ParameterKey": "BackupRetentionPeriod",
+    "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "PreferredBackupWindow",
+    "ParameterValue": "17:00-18:00"
+  },
+  {
+    "ParameterKey": "PreferredMaintenanceWindow",
+    "ParameterValue": "sun:18:00-sun:19:00"
+  },
+  {
+    "ParameterKey": "MultiAZ",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CacheNodeType",
+    "ParameterValue": "cache.t3.medium"
+  },
+  {
+    "ParameterKey": "NumCacheNodes",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "AutomaticFailoverEnabled",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "SnapshotRetentionLimit",
+    "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "SnapshotWindow",
+    "ParameterValue": "17:00-18:00"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]
