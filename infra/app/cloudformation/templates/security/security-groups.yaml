@@ -175,29 +175,19 @@ Outputs:
   ALBSecurityGroupId:
     Description: Security Group ID for ALB
     Value: !Ref ALBSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-sg-id'
 
   ECSSecurityGroupId:
     Description: Security Group ID for ECS
     Value: !Ref ECSSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-ecs-sg-id'
 
   RDSSecurityGroupId:
     Description: Security Group ID for RDS
     Value: !Ref RDSSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-sg-id'
 
   ElastiCacheSecurityGroupId:
     Description: Security Group ID for ElastiCache
     Value: !Ref ElastiCacheSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-sg-id'
 
   VPCEndpointSecurityGroupId:
     Description: Security Group ID for VPC Endpoints
     Value: !Ref VPCEndpointSecurityGroup
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-vpce-sg-id'

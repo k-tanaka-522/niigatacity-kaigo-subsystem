@@ -228,47 +228,31 @@ Outputs:
   RDSKMSKeyId:
     Description: KMS Key ID for RDS encryption
     Value: !Ref RDSKMSKey
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-id'
 
   RDSKMSKeyArn:
     Description: KMS Key ARN for RDS encryption
     Value: !GetAtt RDSKMSKey.Arn
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-rds-kms-arn'
 
   S3KMSKeyId:
     Description: KMS Key ID for S3 encryption
     Value: !Ref S3KMSKey
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-id'
 
   S3KMSKeyArn:
     Description: KMS Key ARN for S3 encryption
     Value: !GetAtt S3KMSKey.Arn
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-s3-kms-arn'
 
   ElastiCacheKMSKeyId:
     Description: KMS Key ID for ElastiCache encryption
     Value: !Ref ElastiCacheKMSKey
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-id'
 
   ElastiCacheKMSKeyArn:
     Description: KMS Key ARN for ElastiCache encryption
     Value: !GetAtt ElastiCacheKMSKey.Arn
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-elasticache-kms-arn'
 
   SecretsManagerKMSKeyId:
     Description: KMS Key ID for Secrets Manager encryption
     Value: !Ref SecretsManagerKMSKey
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-id'
 
   SecretsManagerKMSKeyArn:
     Description: KMS Key ARN for Secrets Manager encryption
     Value: !GetAtt SecretsManagerKMSKey.Arn
-    Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-secrets-kms-arn'

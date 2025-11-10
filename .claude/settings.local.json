@@ -63,7 +63,17 @@
       "Bash(./scripts/deploy-multi-account.sh:*)",
       "Bash(aws ec2 describe-transit-gateway-route-tables:*)",
       "Bash(aws ec2 describe-transit-gateway-attachments:*)",
-      "Bash(aws sts get-caller-identity:*)"
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(./infra/cloudformation/scripts/create-changeset.sh:*)",
+      "Bash(bash scripts/create-changeset.sh:*)",
+      "Bash(bash scripts/describe-changeset.sh:*)",
+      "Bash(bash scripts/execute-changeset.sh:*)",
+      "Bash(stack-events.json)",
+      "Bash(STACK_NAME=\"niigata-kaigo-dev-app-network-stack\")",
+      "Bash(TEMPLATE=\"infra/app/cloudformation/stacks/03-network/main.yaml\")",
+      "Bash(PARAMETERS=\"infra/app/cloudformation/parameters/dev/03-network-stack-params.json\")",
+      "Bash(./scripts/create-changeset.sh:*)",
+      "Bash(CHANGESET_NAME=\"niigata-kaigo-dev-common-network-stack-changeset-20251111-082636\":*)"
     ],
     "deny": [],
     "ask": []

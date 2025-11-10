@@ -1,0 +1,161 @@
+{
+    "StackEvents": [
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "c4527a00-be86-11f0-9094-0eb0e8f2fa29",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "niigata-kaigo-dev-app-security-stack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:44:07.683000+00:00",
+            "ResourceStatus": "ROLLBACK_COMPLETE"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "SecurityGroupsStack-DELETE_COMPLETE-2025-11-10T22:44:07.296Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "SecurityGroupsStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-SecurityGroupsStack-1BIMJBG0ERQEY/5d95f850-be86-11f0-b11c-0edc2ad06f37",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:44:07.296000+00:00",
+            "ResourceStatus": "DELETE_COMPLETE",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/security-groups.yaml\",\"Parameters\":{\"VpcId\":\"vpc-0d0c0e2978cf20f62\",\"AllowedCidrBlocks\":\"0.0.0.0/0\",\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-security-groups-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "KMSStack-DELETE_COMPLETE-2025-11-10T22:42:03.484Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "KMSStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-KMSStack-1C9IUA3L7236K/5db4caf0-be86-11f0-9a1c-0af8bec4ca07",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:42:03.484000+00:00",
+            "ResourceStatus": "DELETE_COMPLETE",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/kms.yaml\",\"Parameters\":{\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-kms-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "SecurityGroupsStack-DELETE_IN_PROGRESS-2025-11-10T22:41:29.428Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "SecurityGroupsStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-SecurityGroupsStack-1BIMJBG0ERQEY/5d95f850-be86-11f0-b11c-0edc2ad06f37",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:29.428000+00:00",
+            "ResourceStatus": "DELETE_IN_PROGRESS",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/security-groups.yaml\",\"Parameters\":{\"VpcId\":\"vpc-0d0c0e2978cf20f62\",\"AllowedCidrBlocks\":\"0.0.0.0/0\",\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-security-groups-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "KMSStack-DELETE_IN_PROGRESS-2025-11-10T22:41:29.405Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "KMSStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-KMSStack-1C9IUA3L7236K/5db4caf0-be86-11f0-9a1c-0af8bec4ca07",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:29.405000+00:00",
+            "ResourceStatus": "DELETE_IN_PROGRESS",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/kms.yaml\",\"Parameters\":{\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-kms-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "6462d860-be86-11f0-867c-06107d1ff86f",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "niigata-kaigo-dev-app-security-stack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:26.715000+00:00",
+            "ResourceStatus": "ROLLBACK_IN_PROGRESS",
+            "ResourceStatusReason": "The following resource(s) failed to create: [SecurityGroupsStack, KMSStack]. Rollback requested by user."
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "KMSStack-CREATE_FAILED-2025-11-10T22:41:26.342Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "KMSStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-KMSStack-1C9IUA3L7236K/5db4caf0-be86-11f0-9a1c-0af8bec4ca07",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:26.342000+00:00",
+            "ResourceStatus": "CREATE_FAILED",
+            "ResourceStatusReason": "Resource creation cancelled",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/kms.yaml\",\"Parameters\":{\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-kms-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "SecurityGroupsStack-CREATE_FAILED-2025-11-10T22:41:26.110Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "SecurityGroupsStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-SecurityGroupsStack-1BIMJBG0ERQEY/5d95f850-be86-11f0-b11c-0edc2ad06f37",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:26.110000+00:00",
+            "ResourceStatus": "CREATE_FAILED",
+            "ResourceStatusReason": "Embedded stack arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-SecurityGroupsStack-1BIMJBG0ERQEY/5d95f850-be86-11f0-b11c-0edc2ad06f37 was not successfully created: The following resource(s) failed to create: [ALBSecurityGroup]. ",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/security-groups.yaml\",\"Parameters\":{\"VpcId\":\"vpc-0d0c0e2978cf20f62\",\"AllowedCidrBlocks\":\"0.0.0.0/0\",\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-security-groups-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "KMSStack-CREATE_IN_PROGRESS-2025-11-10T22:41:15.860Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "KMSStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-KMSStack-1C9IUA3L7236K/5db4caf0-be86-11f0-9a1c-0af8bec4ca07",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:15.860000+00:00",
+            "ResourceStatus": "CREATE_IN_PROGRESS",
+            "ResourceStatusReason": "Resource creation Initiated",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/kms.yaml\",\"Parameters\":{\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-kms-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "SecurityGroupsStack-CREATE_IN_PROGRESS-2025-11-10T22:41:15.666Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "SecurityGroupsStack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack-SecurityGroupsStack-1BIMJBG0ERQEY/5d95f850-be86-11f0-b11c-0edc2ad06f37",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:15.666000+00:00",
+            "ResourceStatus": "CREATE_IN_PROGRESS",
+            "ResourceStatusReason": "Resource creation Initiated",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/security-groups.yaml\",\"Parameters\":{\"VpcId\":\"vpc-0d0c0e2978cf20f62\",\"AllowedCidrBlocks\":\"0.0.0.0/0\",\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-security-groups-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "KMSStack-CREATE_IN_PROGRESS-2025-11-10T22:41:14.982Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "KMSStack",
+            "PhysicalResourceId": "",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:14.982000+00:00",
+            "ResourceStatus": "CREATE_IN_PROGRESS",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/kms.yaml\",\"Parameters\":{\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-kms-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "SecurityGroupsStack-CREATE_IN_PROGRESS-2025-11-10T22:41:14.940Z",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "SecurityGroupsStack",
+            "PhysicalResourceId": "",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:14.940000+00:00",
+            "ResourceStatus": "CREATE_IN_PROGRESS",
+            "ResourceProperties": "{\"TemplateURL\":\"https://niigata-kaigo-cfn-templates-dev.s3.ap-northeast-1.amazonaws.com/app/templates/security/security-groups.yaml\",\"Parameters\":{\"VpcId\":\"vpc-0d0c0e2978cf20f62\",\"AllowedCidrBlocks\":\"0.0.0.0/0\",\"EnvironmentName\":\"dev\",\"ProjectName\":\"niigata-kaigo\"},\"Tags\":[{\"Value\":\"niigata-kaigo-dev-security-groups-stack\",\"Key\":\"Name\"},{\"Value\":\"dev\",\"Key\":\"Environment\"},{\"Value\":\"niigata-kaigo\",\"Key\":\"Project\"}]}"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "5ba10620-be86-11f0-bb2e-0addfdcfd81d",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "niigata-kaigo-dev-app-security-stack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:41:12.032000+00:00",
+            "ResourceStatus": "CREATE_IN_PROGRESS",
+            "ResourceStatusReason": "User Initiated"
+        },
+        {
+            "StackId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "EventId": "c9d654c0-be85-11f0-b75a-0e874bfc509b",
+            "StackName": "niigata-kaigo-dev-app-security-stack",
+            "LogicalResourceId": "niigata-kaigo-dev-app-security-stack",
+            "PhysicalResourceId": "arn:aws:cloudformation:ap-northeast-1:897167645238:stack/niigata-kaigo-dev-app-security-stack/c9d6a2e0-be85-11f0-b75a-0e874bfc509b",
+            "ResourceType": "AWS::CloudFormation::Stack",
+            "Timestamp": "2025-11-10T22:37:07.555000+00:00",
+            "ResourceStatus": "REVIEW_IN_PROGRESS",
+            "ResourceStatusReason": "User Initiated"
+        }
+    ]
+}
