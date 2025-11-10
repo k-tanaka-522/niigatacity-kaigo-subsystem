@@ -1,4 +1,4 @@
-name: Infrastructure Deployment - Multi-Account
+name: Infrastructure Deployment - Multi-Account & Multi-Stack
 
 on:
   workflow_dispatch:
@@ -18,6 +18,20 @@ on:
           - dev
           - staging
           - production
+      stack:
+        description: 'Stack to deploy (app account only)'
+        required: true
+        type: choice
+        options:
+          - network
+          - security
+          - database
+          - compute
+          - storage
+          - auth
+          - monitoring
+          - all
+        default: all
   push:
     branches:
       - master
@@ -57,56 +71,95 @@ jobs:
       - name: Install cfn-lint
         run: pip install cfn-lint
 
-      - name: Determine account and environment
+      - name: Determine deployment parameters
         id: determine
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             ACCOUNT="${{ github.event.inputs.account }}"
             ENV="${{ github.event.inputs.environment }}"
+            STACK="${{ github.event.inputs.stack }}"
           else
             # For push events, deploy to dev environment
             ACCOUNT="common"
             ENV="dev"
+            STACK="network"
           fi
 
           echo "account=$ACCOUNT" >> $GITHUB_OUTPUT
           echo "environment=$ENV" >> $GITHUB_OUTPUT
-          echo "Deploying account: $ACCOUNT, environment: $ENV"
+          echo "stack=$STACK" >> $GITHUB_OUTPUT
+          echo "Deploying account: $ACCOUNT, environment: $ENV, stack: $STACK"
 
       - name: Lint CloudFormation templates
         run: |
           ACCOUNT="${{ steps.determine.outputs.account }}"
+          STACK="${{ steps.determine.outputs.stack }}"
 
-          echo "Linting templates for account: $ACCOUNT"
-          cfn-lint infra/$ACCOUNT/cloudformation/templates/network/*.yaml --ignore-checks W,E0000 || true
+          echo "Linting templates for account: $ACCOUNT, stack: $STACK"
 
-      - name: Validate main stack template
+          if [ "$ACCOUNT" == "common" ]; then
+            cfn-lint infra/$ACCOUNT/cloudformation/templates/network/*.yaml --ignore-checks W,E0000 || true
+          elif [ "$STACK" == "all" ] || [ "$STACK" == "network" ]; then
+            cfn-lint infra/$ACCOUNT/cloudformation/templates/network/*.yaml --ignore-checks W,E0000 || true
+          fi
+
+      - name: Validate main stack templates
         run: |
           ACCOUNT="${{ steps.determine.outputs.account }}"
+          STACK="${{ steps.determine.outputs.stack }}"
+
+          echo "Validating templates for account: $ACCOUNT, stack: $STACK"
 
           if [ "$ACCOUNT" == "common" ]; then
             TEMPLATE="infra/common/cloudformation/stacks/02-network/main.yaml"
-          else
-            TEMPLATE="infra/app/cloudformation/stacks/03-network/main.yaml"
+            echo "Validating: $TEMPLATE"
+            aws cloudformation validate-template --template-body file://$TEMPLATE > /dev/null
+          elif [ "$ACCOUNT" == "app" ]; then
+            # Define stacks to validate
+            if [ "$STACK" == "all" ]; then
+              STACKS="03-network 04-security 05-database 06-compute 07-storage 08-auth 09-monitoring"
+            elif [ "$STACK" == "network" ]; then
+              STACKS="03-network"
+            elif [ "$STACK" == "security" ]; then
+              STACKS="04-security"
+            elif [ "$STACK" == "database" ]; then
+              STACKS="05-database"
+            elif [ "$STACK" == "compute" ]; then
+              STACKS="06-compute"
+            elif [ "$STACK" == "storage" ]; then
+              STACKS="07-storage"
+            elif [ "$STACK" == "auth" ]; then
+              STACKS="08-auth"
+            elif [ "$STACK" == "monitoring" ]; then
+              STACKS="09-monitoring"
+            fi
+
+            for stack_dir in $STACKS; do
+              TEMPLATE="infra/$ACCOUNT/cloudformation/stacks/$stack_dir/main.yaml"
+              echo "Validating: $TEMPLATE"
+              aws cloudformation validate-template --template-body file://$TEMPLATE > /dev/null
+              echo "✅ $TEMPLATE is valid"
+            done
           fi
 
-          echo "Validating main stack template: $TEMPLATE"
-          aws cloudformation validate-template --template-body file://$TEMPLATE > /dev/null
+          echo "✅ All main stack templates are valid"
 
-          echo "✅ Main stack template is valid"
-
-      - name: Validate all nested templates
+      - name: Validate nested templates
         run: |
           ACCOUNT="${{ steps.determine.outputs.account }}"
+          STACK="${{ steps.determine.outputs.stack }}"
 
-          echo "Validating nested templates for account: $ACCOUNT"
+          echo "Validating nested templates for account: $ACCOUNT, stack: $STACK"
 
-          for template in infra/$ACCOUNT/cloudformation/templates/network/*.yaml; do
-            echo "Validating: $template"
-            aws cloudformation validate-template --template-body file://$template > /dev/null
-          done
-
-          echo "✅ All nested templates are valid"
+          if [ "$ACCOUNT" == "common" ] || [ "$STACK" == "network" ] || [ "$STACK" == "all" ]; then
+            if [ -d "infra/$ACCOUNT/cloudformation/templates/network" ]; then
+              for template in infra/$ACCOUNT/cloudformation/templates/network/*.yaml; do
+                echo "Validating: $template"
+                aws cloudformation validate-template --template-body file://$template > /dev/null
+              done
+              echo "✅ Network nested templates are valid"
+            fi
+          fi
 
   upload-templates:
     name: Upload Templates to S3
@@ -123,19 +176,22 @@ jobs:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Determine account and environment
+      - name: Determine deployment parameters
         id: determine
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             ACCOUNT="${{ github.event.inputs.account }}"
             ENV="${{ github.event.inputs.environment }}"
+            STACK="${{ github.event.inputs.stack }}"
           else
             ACCOUNT="common"
             ENV="dev"
+            STACK="network"
           fi
 
           echo "account=$ACCOUNT" >> $GITHUB_OUTPUT
           echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "stack=$STACK" >> $GITHUB_OUTPUT
 
       - name: Determine S3 bucket
         id: determine-bucket
@@ -194,16 +250,14 @@ jobs:
 
           echo "✅ Templates uploaded successfully"
 
-  create-changeset:
-    name: Create Change Set
+  # Common Account: Network Stack
+  deploy-common-network:
+    name: Deploy Common Network Stack
     needs: upload-templates
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.account == 'common' || (github.event_name == 'push' && contains(github.event.head_commit.modified, 'infra/common/')) }}
     environment:
       name: ${{ github.event.inputs.environment || 'dev' }}-infra
-
-    outputs:
-      stack_name: ${{ steps.create-changeset.outputs.stack_name }}
-      changeset_name: ${{ steps.create-changeset.outputs.changeset_name }}
 
     steps:
       - name: Checkout code
@@ -215,221 +269,419 @@ jobs:
           role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Determine account and environment
-        id: determine
+      - name: Deploy Common Network Stack
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            ACCOUNT="${{ github.event.inputs.account }}"
-            ENV="${{ github.event.inputs.environment }}"
-          else
-            ACCOUNT="common"
-            ENV="dev"
-          fi
-
-          echo "account=$ACCOUNT" >> $GITHUB_OUTPUT
-          echo "environment=$ENV" >> $GITHUB_OUTPUT
-
-      - name: Create Change Set
-        id: create-changeset
-        run: |
-          ACCOUNT="${{ steps.determine.outputs.account }}"
-          ENV="${{ steps.determine.outputs.environment }}"
-
-          if [ "$ACCOUNT" == "common" ]; then
-            STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-common-network-stack"
-            TEMPLATE="infra/common/cloudformation/stacks/02-network/main.yaml"
-            PARAMETERS="infra/common/cloudformation/parameters/${ENV}.json"
-          else
-            STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-network-stack"
-            TEMPLATE="infra/app/cloudformation/stacks/03-network/main.yaml"
-            PARAMETERS="infra/app/cloudformation/parameters/${ENV}.json"
-          fi
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-common-network-stack"
+          TEMPLATE="infra/common/cloudformation/stacks/02-network/main.yaml"
+          PARAMETERS="infra/common/cloudformation/parameters/${ENV}.json"
 
           echo "================================================"
-          echo "Creating Change Set for Multi-Account Network"
+          echo "Deploying Common Network Stack"
           echo "================================================"
-          echo "Account: $ACCOUNT"
-          echo "Environment: $ENV"
-          echo "Stack Name: $STACK_NAME"
+          echo "Stack: $STACK_NAME"
           echo "Template: $TEMPLATE"
           echo "Parameters: $PARAMETERS"
-          echo "================================================"
 
-          # Make scripts executable
           chmod +x infra/cloudformation/scripts/*.sh
 
           # Create Change Set
-          ./infra/cloudformation/scripts/create-changeset.sh \
-            "$STACK_NAME" \
-            "$TEMPLATE" \
-            "$PARAMETERS" \
-            "$ENV"
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
 
-          # Get the latest Change Set name
+          # Get Change Set name
           CHANGESET_NAME=$(aws cloudformation list-change-sets \
             --stack-name "$STACK_NAME" \
-            --region ${{ env.AWS_REGION }} \
             --query 'Summaries[0].ChangeSetName' \
             --output text)
 
-          echo "changeset_name=$CHANGESET_NAME" >> $GITHUB_OUTPUT
-          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
-
-          echo "✅ Change Set created: $CHANGESET_NAME"
-
-      - name: Describe Change Set
-        run: |
-          STACK_NAME="${{ steps.create-changeset.outputs.stack_name }}"
-          CHANGESET_NAME="${{ steps.create-changeset.outputs.changeset_name }}"
-
-          echo "================================================"
-          echo "Change Set Details"
-          echo "================================================"
-
-          chmod +x infra/cloudformation/scripts/*.sh
+          # Describe Change Set
           ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
-
-      - name: Wait for manual approval
-        run: |
-          ACCOUNT="${{ steps.determine.outputs.account }}"
-
-          echo "================================================"
-          echo "⏸️  Change Set Created - Waiting for Approval"
-          echo "================================================"
-          echo "Account: $ACCOUNT"
-          echo "Stack: ${{ steps.create-changeset.outputs.stack_name }}"
-          echo "Change Set: ${{ steps.create-changeset.outputs.changeset_name }}"
-          echo ""
-          echo "📋 Review the Change Set above and approve this workflow to continue."
-          echo ""
-
-          if [ "$ACCOUNT" == "common" ]; then
-            echo "Expected Resources (Common Account):"
-            echo "  - Transit Gateway"
-            echo "  - Common VPC (10.100.0.0/16)"
-            echo "  - NAT Gateways × 2"
-            echo "  - Subnets × 4"
-            echo "  - Route Tables"
-            echo "  - Transit Gateway Attachment"
-          else
-            echo "Expected Resources (App Account):"
-            echo "  - App VPC (10.101.0.0/16)"
-            echo "  - NAT Gateways × 2"
-            echo "  - Subnets × 4"
-            echo "  - Route Tables"
-            echo "  - Transit Gateway Attachment"
-          fi
-          echo "================================================"
-
-  execute-changeset:
-    name: Execute Change Set
-    needs: create-changeset
-    runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event.inputs.environment || 'dev' }}-infra
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Execute Change Set
-        id: execute
-        run: |
-          STACK_NAME="${{ needs.create-changeset.outputs.stack_name }}"
-
-          # Get the latest Change Set name
-          CHANGESET_NAME=$(aws cloudformation list-change-sets \
-            --stack-name "$STACK_NAME" \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Summaries[0].ChangeSetName' \
-            --output text)
-
-          echo "================================================"
-          echo "Executing Change Set"
-          echo "================================================"
-          echo "Stack: $STACK_NAME"
-          echo "Change Set: $CHANGESET_NAME"
-          echo "================================================"
-
-          # Make scripts executable
-          chmod +x infra/cloudformation/scripts/*.sh
 
           # Execute Change Set
           echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
 
-      - name: Wait for stack completion
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Common Network Stack deployed successfully"
+
+  # App Account: Security Stack (Phase 1)
+  deploy-app-security:
+    name: Deploy App Security Stack
+    needs: upload-templates
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.account == 'app' && (github.event.inputs.stack == 'security' || github.event.inputs.stack == 'all') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Security Stack
         run: |
-          STACK_NAME="${{ needs.create-changeset.outputs.stack_name }}"
-
-          echo "⏳ Waiting for stack creation/update to complete..."
-          echo "This may take 5-10 minutes (NAT Gateways take time to create)"
-
-          aws cloudformation wait stack-create-complete \
-            --stack-name "$STACK_NAME" \
-            --region ${{ env.AWS_REGION }} 2>/dev/null || \
-          aws cloudformation wait stack-update-complete \
-            --stack-name "$STACK_NAME" \
-            --region ${{ env.AWS_REGION }}
-
-          echo "✅ Stack operation completed successfully"
-
-      - name: Display stack outputs
-        run: |
-          STACK_NAME="${{ needs.create-changeset.outputs.stack_name }}"
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-security-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/04-security/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/04-security-stack-params.json"
 
           echo "================================================"
-          echo "Stack Outputs"
+          echo "Deploying Security Stack"
           echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
 
-          aws cloudformation describe-stacks \
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
             --stack-name "$STACK_NAME" \
-            --region ${{ env.AWS_REGION }} \
-            --query 'Stacks[0].Outputs' \
-            --output table
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Security Stack deployed successfully"
+
+  # App Account: Database Stack (Phase 2)
+  deploy-app-database:
+    name: Deploy App Database Stack
+    needs: [upload-templates, deploy-app-security]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event.inputs.account == 'app' && (github.event.inputs.stack == 'database' || github.event.inputs.stack == 'all') && (needs.deploy-app-security.result == 'success' || github.event.inputs.stack == 'database') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Database Stack
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-database-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/05-database/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/05-database-stack-params.json"
 
           echo "================================================"
+          echo "Deploying Database Stack"
+          echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
 
-      - name: Deployment notification
-        if: always()
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Database Stack deployed successfully"
+
+  # App Account: Compute Stack (Phase 3)
+  deploy-app-compute:
+    name: Deploy App Compute Stack
+    needs: [upload-templates, deploy-app-database]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event.inputs.account == 'app' && (github.event.inputs.stack == 'compute' || github.event.inputs.stack == 'all') && (needs.deploy-app-database.result == 'success' || github.event.inputs.stack == 'compute') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Compute Stack
         run: |
-          ACCOUNT=$(echo "${{ needs.create-changeset.outputs.stack_name }}" | grep -oP '(?<=-)(common|app)(?=-)')
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-compute-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/06-compute/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/06-compute-stack-params.json"
 
+          echo "================================================"
+          echo "Deploying Compute Stack"
+          echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
+
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Compute Stack deployed successfully"
+
+  # App Account: Storage Stack (Phase 4)
+  deploy-app-storage:
+    name: Deploy App Storage Stack
+    needs: [upload-templates, deploy-app-compute]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event.inputs.account == 'app' && (github.event.inputs.stack == 'storage' || github.event.inputs.stack == 'all') && (needs.deploy-app-compute.result == 'success' || github.event.inputs.stack == 'storage') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Storage Stack
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-storage-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/07-storage/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/07-storage-stack-params.json"
+
+          echo "================================================"
+          echo "Deploying Storage Stack"
+          echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
+
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Storage Stack deployed successfully"
+
+  # App Account: Auth Stack (Phase 5)
+  deploy-app-auth:
+    name: Deploy App Auth Stack
+    needs: [upload-templates, deploy-app-storage]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event.inputs.account == 'app' && (github.event.inputs.stack == 'auth' || github.event.inputs.stack == 'all') && (needs.deploy-app-storage.result == 'success' || github.event.inputs.stack == 'auth') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Auth Stack
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-auth-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/08-auth/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/08-auth-stack-params.json"
+
+          echo "================================================"
+          echo "Deploying Auth Stack"
+          echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
+
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Auth Stack deployed successfully"
+
+  # App Account: Monitoring Stack (Phase 6)
+  deploy-app-monitoring:
+    name: Deploy App Monitoring Stack
+    needs: [upload-templates, deploy-app-auth]
+    runs-on: ubuntu-latest
+    if: ${{ always() && github.event.inputs.account == 'app' && (github.event.inputs.stack == 'monitoring' || github.event.inputs.stack == 'all') && (needs.deploy-app-auth.result == 'success' || github.event.inputs.stack == 'monitoring') }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}-infra
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::897167645238:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Monitoring Stack
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          STACK_NAME="${{ env.PROJECT_NAME }}-${ENV}-app-monitoring-stack"
+          TEMPLATE="infra/app/cloudformation/stacks/09-monitoring/main.yaml"
+          PARAMETERS="infra/app/cloudformation/parameters/${ENV}/09-monitoring-stack-params.json"
+
+          echo "================================================"
+          echo "Deploying Monitoring Stack"
+          echo "================================================"
+          echo "Stack: $STACK_NAME"
+          echo "Template: $TEMPLATE"
+          echo "Parameters: $PARAMETERS"
+
+          chmod +x infra/cloudformation/scripts/*.sh
+
+          # Create Change Set
+          ./infra/cloudformation/scripts/create-changeset.sh "$STACK_NAME" "$TEMPLATE" "$PARAMETERS" "$ENV"
+
+          # Get Change Set name
+          CHANGESET_NAME=$(aws cloudformation list-change-sets \
+            --stack-name "$STACK_NAME" \
+            --query 'Summaries[0].ChangeSetName' \
+            --output text)
+
+          # Describe Change Set
+          ./infra/cloudformation/scripts/describe-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Execute Change Set
+          echo "yes" | ./infra/cloudformation/scripts/execute-changeset.sh "$STACK_NAME" "$CHANGESET_NAME"
+
+          # Wait for completion
+          aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" 2>/dev/null || \
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+          echo "✅ Monitoring Stack deployed successfully"
+
+  # Deployment Summary
+  deployment-summary:
+    name: Deployment Summary
+    needs: [deploy-common-network, deploy-app-security, deploy-app-database, deploy-app-compute, deploy-app-storage, deploy-app-auth, deploy-app-monitoring]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Display Deployment Summary
+        run: |
           echo "================================================"
           echo "Deployment Summary"
           echo "================================================"
-          echo "Status: ${{ job.status }}"
-          echo "Account: $ACCOUNT"
+          echo "Account: ${{ github.event.inputs.account || 'common' }}"
           echo "Environment: ${{ github.event.inputs.environment || 'dev' }}"
-          echo "Stack: ${{ needs.create-changeset.outputs.stack_name }}"
-          echo "Region: ${{ env.AWS_REGION }}"
-          echo "================================================"
+          echo "Stack: ${{ github.event.inputs.stack || 'network' }}"
           echo ""
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Multi-Account network stack deployed successfully!"
-            echo ""
-            if [ "$ACCOUNT" == "common" ]; then
-              echo "Deployed Resources (Common Account):"
-              echo "  ✓ Transit Gateway"
-              echo "  ✓ Common VPC (10.100.0.0/16)"
-              echo "  ✓ NAT Gateways × 2"
-              echo "  ✓ Subnets × 4"
-              echo "  ✓ Route Tables"
-              echo "  ✓ Transit Gateway Attachment"
-            else
-              echo "Deployed Resources (App Account):"
-              echo "  ✓ App VPC (10.101.0.0/16)"
-              echo "  ✓ NAT Gateways × 2"
-              echo "  ✓ Subnets × 4"
-              echo "  ✓ Route Tables"
-              echo "  ✓ Transit Gateway Attachment"
-            fi
-          else
-            echo "❌ Deployment failed. Check the logs above for details."
-          fi
+          echo "Job Results:"
+          echo "  - Common Network: ${{ needs.deploy-common-network.result || 'skipped' }}"
+          echo "  - App Security: ${{ needs.deploy-app-security.result || 'skipped' }}"
+          echo "  - App Database: ${{ needs.deploy-app-database.result || 'skipped' }}"
+          echo "  - App Compute: ${{ needs.deploy-app-compute.result || 'skipped' }}"
+          echo "  - App Storage: ${{ needs.deploy-app-storage.result || 'skipped' }}"
+          echo "  - App Auth: ${{ needs.deploy-app-auth.result || 'skipped' }}"
+          echo "  - App Monitoring: ${{ needs.deploy-app-monitoring.result || 'skipped' }}"
           echo "================================================"
+
+          # Determine overall status
+          FAILED=0
+          if [ "${{ needs.deploy-common-network.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-security.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-database.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-compute.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-storage.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-auth.result }}" == "failure" ]; then FAILED=1; fi
+          if [ "${{ needs.deploy-app-monitoring.result }}" == "failure" ]; then FAILED=1; fi
+
+          if [ "$FAILED" == "1" ]; then
+            echo "❌ Deployment failed. Check the logs above for details."
+            exit 1
+          else
+            echo "✅ Deployment completed successfully!"
+          fi
