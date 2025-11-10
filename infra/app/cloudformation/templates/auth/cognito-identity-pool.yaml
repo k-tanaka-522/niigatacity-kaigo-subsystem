@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito Identity Pool with IAM roles for authenticated and unauthenticated users'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  UserPoolId:
+    Type: String
+    Description: Cognito User Pool ID
+
+  UserPoolClientId:
+    Type: String
+    Description: Cognito User Pool Client ID
+
+  AllowUnauthenticatedIdentities:
+    Type: String
+    Description: Allow unauthenticated identities
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+
+Conditions:
+  AllowUnauth: !Equals [!Ref AllowUnauthenticatedIdentities, "true"]
+
+Resources:
+  # ==============================================================================
+  # Cognito Identity Pool
+  # ==============================================================================
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub '${ProjectName}_${EnvironmentName}_identity_pool'
+      AllowUnauthenticatedIdentities: !Ref AllowUnauthenticatedIdentities
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClientId
+          ProviderName: !Sub 'cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}'
+
+  # ==============================================================================
+  # IAM Role for Authenticated Users
+  # ==============================================================================
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-authenticated-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: AuthenticatedUserPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 Access (user's own data)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ProjectName}-${EnvironmentName}-app-data/private/${!cognito-identity.amazonaws.com:sub}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ProjectName}-${EnvironmentName}-app-data'
+                Condition:
+                  StringLike:
+                    's3:prefix':
+                      - 'private/${cognito-identity.amazonaws.com:sub}/*'
+              # CloudWatch Logs (mobile/web app logging)
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/cognito/${ProjectName}-${EnvironmentName}:*'
+              # Cognito Sync (optional)
+              - Effect: Allow
+                Action:
+                  - cognito-sync:*
+                Resource:
+                  - !Sub 'arn:aws:cognito-sync:${AWS::Region}:${AWS::AccountId}:identitypool/${IdentityPool}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-authenticated-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # IAM Role for Unauthenticated Users (optional)
+  # ==============================================================================
+  UnauthenticatedRole:
+    Type: AWS::IAM::Role
+    Condition: AllowUnauth
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-unauthenticated-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: 'sts:AssumeRoleWithWebIdentity'
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': unauthenticated
+      Policies:
+        - PolicyName: UnauthenticatedUserPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # S3 Access (public read-only)
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ProjectName}-${EnvironmentName}-app-data/public/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-unauthenticated-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Identity Pool Role Attachment
+  # ==============================================================================
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt AuthenticatedRole.Arn
+        unauthenticated: !If
+          - AllowUnauth
+          - !GetAtt UnauthenticatedRole.Arn
+          - !Ref AWS::NoValue
+
+Outputs:
+  IdentityPoolId:
+    Description: ID of the Cognito Identity Pool
+    Value: !Ref IdentityPool
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-identity-pool-id'
+
+  AuthenticatedRoleArn:
+    Description: ARN of the Authenticated IAM Role
+    Value: !GetAtt AuthenticatedRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-authenticated-role-arn'
+
+  UnauthenticatedRoleArn:
+    Condition: AllowUnauth
+    Description: ARN of the Unauthenticated IAM Role
+    Value: !GetAtt UnauthenticatedRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-unauthenticated-role-arn'

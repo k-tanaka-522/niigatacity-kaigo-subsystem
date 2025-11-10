@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Authentication Stack - Cognito User Pool and Identity Pool'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  # MFA Configuration
+  MFAConfiguration:
+    Type: String
+    Description: MFA configuration (GCAS requires ON for production)
+    Default: "ON"
+    AllowedValues:
+      - "OFF"
+      - "OPTIONAL"
+      - "ON"
+
+  # Password Policy
+  PasswordMinimumLength:
+    Type: Number
+    Description: Minimum password length
+    Default: 12
+
+  PasswordRequireUppercase:
+    Type: String
+    Description: Require uppercase letters
+    Default: "true"
+
+  PasswordRequireLowercase:
+    Type: String
+    Description: Require lowercase letters
+    Default: "true"
+
+  PasswordRequireNumbers:
+    Type: String
+    Description: Require numbers
+    Default: "true"
+
+  PasswordRequireSymbols:
+    Type: String
+    Description: Require symbols
+    Default: "true"
+
+  # Session Duration
+  AccessTokenValidity:
+    Type: Number
+    Description: Access token validity in minutes
+    Default: 60
+
+  IdTokenValidity:
+    Type: Number
+    Description: ID token validity in minutes
+    Default: 60
+
+  RefreshTokenValidity:
+    Type: Number
+    Description: Refresh token validity in days
+    Default: 30
+
+  # Identity Pool
+  AllowUnauthenticatedIdentities:
+    Type: String
+    Description: Allow unauthenticated identities
+    Default: "false"
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # ==============================================================================
+  # Cognito User Pool Stack
+  # ==============================================================================
+  UserPoolStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/auth/cognito-user-pool.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        MFAConfiguration: !Ref MFAConfiguration
+        PasswordMinimumLength: !Ref PasswordMinimumLength
+        PasswordRequireUppercase: !Ref PasswordRequireUppercase
+        PasswordRequireLowercase: !Ref PasswordRequireLowercase
+        PasswordRequireNumbers: !Ref PasswordRequireNumbers
+        PasswordRequireSymbols: !Ref PasswordRequireSymbols
+        AccessTokenValidity: !Ref AccessTokenValidity
+        IdTokenValidity: !Ref IdTokenValidity
+        RefreshTokenValidity: !Ref RefreshTokenValidity
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-user-pool-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Cognito Identity Pool Stack
+  # ==============================================================================
+  IdentityPoolStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: UserPoolStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/auth/cognito-identity-pool.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        UserPoolId: !GetAtt UserPoolStack.Outputs.UserPoolId
+        UserPoolClientId: !GetAtt UserPoolStack.Outputs.UserPoolClientIdFrontend
+        AllowUnauthenticatedIdentities: !Ref AllowUnauthenticatedIdentities
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-identity-pool-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # User Pool Outputs
+  UserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-id'
+
+  UserPoolArn:
+    Description: ARN of the Cognito User Pool
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-arn'
+
+  UserPoolClientIdFrontend:
+    Description: Client ID for Frontend app
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolClientIdFrontend
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-client-frontend-id'
+
+  UserPoolClientIdBackend:
+    Description: Client ID for Backend API
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolClientIdBackend
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-client-backend-id'
+
+  UserPoolDomain:
+    Description: User Pool Domain
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolDomain
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-domain'
+
+  UserPoolDomainUrl:
+    Description: User Pool Domain URL
+    Value: !GetAtt UserPoolStack.Outputs.UserPoolDomainUrl
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-domain-url'
+
+  # Identity Pool Outputs
+  IdentityPoolId:
+    Description: ID of the Cognito Identity Pool
+    Value: !GetAtt IdentityPoolStack.Outputs.IdentityPoolId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-identity-pool-id'
+
+  AuthenticatedRoleArn:
+    Description: ARN of the Authenticated IAM Role
+    Value: !GetAtt IdentityPoolStack.Outputs.AuthenticatedRoleArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-authenticated-role-arn'
+
+  # User Groups
+  AdminGroupName:
+    Description: Name of the Admin Group
+    Value: !GetAtt UserPoolStack.Outputs.AdminGroupName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-admin-group'
+
+  ManagerGroupName:
+    Description: Name of the Manager Group
+    Value: !GetAtt UserPoolStack.Outputs.ManagerGroupName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-manager-group'
+
+  UserGroupName:
+    Description: Name of the User Group
+    Value: !GetAtt UserPoolStack.Outputs.UserGroupName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-group'

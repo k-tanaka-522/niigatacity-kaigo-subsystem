@@ -1,0 +1,58 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "KMSKeyId",
+    "ParameterValue": "PLACEHOLDER-KMS-KEY-ID"
+  },
+  {
+    "ParameterKey": "TransitionToIADays",
+    "ParameterValue": "90"
+  },
+  {
+    "ParameterKey": "TransitionToGlacierDays",
+    "ParameterValue": "180"
+  },
+  {
+    "ParameterKey": "ExpirationDays",
+    "ParameterValue": "365"
+  },
+  {
+    "ParameterKey": "VersioningEnabled",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CustomDomainName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DefaultTTL",
+    "ParameterValue": "86400"
+  },
+  {
+    "ParameterKey": "MaxTTL",
+    "ParameterValue": "31536000"
+  },
+  {
+    "ParameterKey": "MinTTL",
+    "ParameterValue": "0"
+  },
+  {
+    "ParameterKey": "PriceClass",
+    "ParameterValue": "PriceClass_200"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]

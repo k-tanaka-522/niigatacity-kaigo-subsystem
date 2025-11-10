@@ -1,0 +1,90 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-PLACEHOLDER"
+  },
+  {
+    "ParameterKey": "PublicSubnetIds",
+    "ParameterValue": "subnet-PLACEHOLDER1,subnet-PLACEHOLDER2"
+  },
+  {
+    "ParameterKey": "PrivateSubnetIds",
+    "ParameterValue": "subnet-PLACEHOLDER3,subnet-PLACEHOLDER4"
+  },
+  {
+    "ParameterKey": "ALBSecurityGroupId",
+    "ParameterValue": "sg-PLACEHOLDER-ALB"
+  },
+  {
+    "ParameterKey": "ECSSecurityGroupId",
+    "ParameterValue": "sg-PLACEHOLDER-ECS"
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "LogsBucketName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "HealthCheckPath",
+    "ParameterValue": "/health"
+  },
+  {
+    "ParameterKey": "BackendTaskCpu",
+    "ParameterValue": "512"
+  },
+  {
+    "ParameterKey": "BackendTaskMemory",
+    "ParameterValue": "1024"
+  },
+  {
+    "ParameterKey": "BackendImageUri",
+    "ParameterValue": "public.ecr.aws/docker/library/nginx:latest"
+  },
+  {
+    "ParameterKey": "BackendDesiredCount",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "FrontendTaskCpu",
+    "ParameterValue": "256"
+  },
+  {
+    "ParameterKey": "FrontendTaskMemory",
+    "ParameterValue": "512"
+  },
+  {
+    "ParameterKey": "FrontendImageUri",
+    "ParameterValue": "public.ecr.aws/docker/library/nginx:latest"
+  },
+  {
+    "ParameterKey": "FrontendDesiredCount",
+    "ParameterValue": "2"
+  },
+  {
+    "ParameterKey": "DBSecretArn",
+    "ParameterValue": "arn:aws:secretsmanager:ap-northeast-1:ACCOUNT-ID:secret:PLACEHOLDER"
+  },
+  {
+    "ParameterKey": "RedisSecretArn",
+    "ParameterValue": "arn:aws:secretsmanager:ap-northeast-1:ACCOUNT-ID:secret:PLACEHOLDER"
+  },
+  {
+    "ParameterKey": "LogRetentionDays",
+    "ParameterValue": "90"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]

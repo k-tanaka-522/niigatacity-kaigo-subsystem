@@ -1,0 +1,54 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "MFAConfiguration",
+    "ParameterValue": "OPTIONAL"
+  },
+  {
+    "ParameterKey": "PasswordMinimumLength",
+    "ParameterValue": "12"
+  },
+  {
+    "ParameterKey": "PasswordRequireUppercase",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireLowercase",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireNumbers",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "PasswordRequireSymbols",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "AccessTokenValidity",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "IdTokenValidity",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "RefreshTokenValidity",
+    "ParameterValue": "30"
+  },
+  {
+    "ParameterKey": "AllowUnauthenticatedIdentities",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]

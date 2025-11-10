@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application Load Balancer with HTTPS and HTTP to HTTPS redirect'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  ALBSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of public subnet IDs for ALB
+
+  ALBSecurityGroupId:
+    Type: String
+    Description: Security Group ID for ALB
+
+  VpcId:
+    Type: String
+    Description: VPC ID where ALB will be created
+
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for HTTPS listener
+    Default: ""
+
+  LogsBucketName:
+    Type: String
+    Description: S3 bucket name for ALB access logs
+    Default: ""
+
+  HealthCheckPath:
+    Type: String
+    Description: Health check path
+    Default: "/health"
+
+  HealthCheckIntervalSeconds:
+    Type: Number
+    Description: Health check interval in seconds
+    Default: 30
+    MinValue: 5
+    MaxValue: 300
+
+  HealthCheckTimeoutSeconds:
+    Type: Number
+    Description: Health check timeout in seconds
+    Default: 5
+    MinValue: 2
+    MaxValue: 120
+
+  HealthyThresholdCount:
+    Type: Number
+    Description: Number of consecutive successful health checks
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+
+  UnhealthyThresholdCount:
+    Type: Number
+    Description: Number of consecutive failed health checks
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+
+  DeregistrationDelay:
+    Type: Number
+    Description: Deregistration delay in seconds
+    Default: 30
+    MinValue: 0
+    MaxValue: 3600
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, ""]]
+  HasLogsBucket: !Not [!Equals [!Ref LogsBucketName, ""]]
+
+Resources:
+  # ==============================================================================
+  # Application Load Balancer
+  # ==============================================================================
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb'
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets: !Ref ALBSubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroupId
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: "60"
+        - Key: deletion_protection.enabled
+          Value: !If [HasCertificate, "true", "false"]  # Enable for production
+        - Key: http2.enabled
+          Value: "true"
+        - Key: access_logs.s3.enabled
+          Value: !If [HasLogsBucket, "true", "false"]
+        - !If
+          - HasLogsBucket
+          - Key: access_logs.s3.bucket
+            Value: !Ref LogsBucketName
+          - !Ref AWS::NoValue
+        - !If
+          - HasLogsBucket
+          - Key: access_logs.s3.prefix
+            Value: alb/
+          - !Ref AWS::NoValue
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alb'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Target Groups
+  # ==============================================================================
+  # Backend Target Group (.NET Core)
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backend-tg'
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: !Ref HealthCheckIntervalSeconds
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeoutSeconds
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      Matcher:
+        HttpCode: "200"
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !Ref DeregistrationDelay
+        - Key: stickiness.enabled
+          Value: "false"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-backend-tg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Frontend Target Group (Next.js)
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-tg'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: !Ref HealthCheckIntervalSeconds
+      HealthCheckTimeoutSeconds: !Ref HealthCheckTimeoutSeconds
+      HealthyThresholdCount: !Ref HealthyThresholdCount
+      UnhealthyThresholdCount: !Ref UnhealthyThresholdCount
+      Matcher:
+        HttpCode: "200"
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: !Ref DeregistrationDelay
+        - Key: stickiness.enabled
+          Value: "false"
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-frontend-tg'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # HTTP Listener (redirect to HTTPS)
+  # ==============================================================================
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - !If
+          - HasCertificate
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: "443"
+              Host: "#{host}"
+              Path: "/#{path}"
+              Query: "#{query}"
+              StatusCode: HTTP_301
+          - Type: fixed-response
+            FixedResponseConfig:
+              StatusCode: "200"
+              ContentType: text/plain
+              MessageBody: "OK"
+
+  # ==============================================================================
+  # HTTPS Listener (production only)
+  # ==============================================================================
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  # ==============================================================================
+  # Listener Rules
+  # ==============================================================================
+  # Backend API Rule (HTTPS)
+  BackendAPIRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasCertificate
+    Properties:
+      ListenerArn: !Ref HTTPSListener
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/api/*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  # Backend Health Check Rule (HTTPS)
+  BackendHealthRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasCertificate
+    Properties:
+      ListenerArn: !Ref HTTPSListener
+      Priority: 20
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - "/health"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+Outputs:
+  LoadBalancerArn:
+    Description: ARN of the Application Load Balancer
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-arn'
+
+  LoadBalancerDNSName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-dns'
+
+  LoadBalancerHostedZoneId:
+    Description: Hosted Zone ID of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-hosted-zone-id'
+
+  BackendTargetGroupArn:
+    Description: ARN of the Backend Target Group
+    Value: !Ref BackendTargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backend-tg-arn'
+
+  FrontendTargetGroupArn:
+    Description: ARN of the Frontend Target Group
+    Value: !Ref FrontendTargetGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-tg-arn'
+
+  HTTPListenerArn:
+    Description: ARN of the HTTP Listener
+    Value: !Ref HTTPListener
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-http-listener-arn'
+
+  HTTPSListenerArn:
+    Condition: HasCertificate
+    Description: ARN of the HTTPS Listener
+    Value: !Ref HTTPSListener
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-https-listener-arn'

@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Compute Stack - ALB and ECS Fargate Cluster'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  # Network Parameters
+  VpcId:
+    Type: String
+    Description: VPC ID
+
+  PublicSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of public subnet IDs for ALB
+
+  PrivateSubnetIds:
+    Type: CommaDelimitedList
+    Description: Comma-delimited list of private subnet IDs for ECS tasks
+
+  # Security Groups
+  ALBSecurityGroupId:
+    Type: String
+    Description: Security Group ID for ALB
+
+  ECSSecurityGroupId:
+    Type: String
+    Description: Security Group ID for ECS tasks
+
+  # ALB Parameters
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for HTTPS listener
+    Default: ""
+
+  LogsBucketName:
+    Type: String
+    Description: S3 bucket name for ALB access logs
+    Default: ""
+
+  HealthCheckPath:
+    Type: String
+    Description: Health check path
+    Default: "/health"
+
+  # ECS Task Configuration
+  BackendTaskCpu:
+    Type: String
+    Description: CPU units for Backend task
+    Default: "512"
+
+  BackendTaskMemory:
+    Type: String
+    Description: Memory for Backend task (MB)
+    Default: "1024"
+
+  BackendImageUri:
+    Type: String
+    Description: Docker image URI for Backend (.NET Core)
+    Default: "public.ecr.aws/docker/library/nginx:latest"
+
+  BackendDesiredCount:
+    Type: Number
+    Description: Desired number of Backend tasks
+    Default: 2
+
+  FrontendTaskCpu:
+    Type: String
+    Description: CPU units for Frontend task
+    Default: "256"
+
+  FrontendTaskMemory:
+    Type: String
+    Description: Memory for Frontend task (MB)
+    Default: "512"
+
+  FrontendImageUri:
+    Type: String
+    Description: Docker image URI for Frontend (Next.js)
+    Default: "public.ecr.aws/docker/library/nginx:latest"
+
+  FrontendDesiredCount:
+    Type: Number
+    Description: Desired number of Frontend tasks
+    Default: 2
+
+  # Database and Redis Secrets
+  DBSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing DB credentials
+    Default: ""
+
+  RedisSecretArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing Redis AUTH token
+    Default: ""
+
+  # CloudWatch Logs
+  LogRetentionDays:
+    Type: Number
+    Description: CloudWatch Logs retention period in days (GCAS requires 90+ days)
+    Default: 90
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # ==============================================================================
+  # ALB Stack
+  # ==============================================================================
+  ALBStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/compute/alb.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        ALBSubnetIds: !Join [',', !Ref PublicSubnetIds]
+        ALBSecurityGroupId: !Ref ALBSecurityGroupId
+        VpcId: !Ref VpcId
+        CertificateArn: !Ref CertificateArn
+        LogsBucketName: !Ref LogsBucketName
+        HealthCheckPath: !Ref HealthCheckPath
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alb-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # ECS Cluster Stack
+  # ==============================================================================
+  ECSClusterStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: ALBStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/compute/ecs-cluster.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        PrivateSubnetIds: !Join [',', !Ref PrivateSubnetIds]
+        ECSSecurityGroupId: !Ref ECSSecurityGroupId
+        BackendTargetGroupArn: !GetAtt ALBStack.Outputs.BackendTargetGroupArn
+        FrontendTargetGroupArn: !GetAtt ALBStack.Outputs.FrontendTargetGroupArn
+        BackendTaskCpu: !Ref BackendTaskCpu
+        BackendTaskMemory: !Ref BackendTaskMemory
+        BackendImageUri: !Ref BackendImageUri
+        BackendDesiredCount: !Ref BackendDesiredCount
+        FrontendTaskCpu: !Ref FrontendTaskCpu
+        FrontendTaskMemory: !Ref FrontendTaskMemory
+        FrontendImageUri: !Ref FrontendImageUri
+        FrontendDesiredCount: !Ref FrontendDesiredCount
+        DBSecretArn: !Ref DBSecretArn
+        RedisSecretArn: !Ref RedisSecretArn
+        LogRetentionDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-ecs-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # ALB Outputs
+  LoadBalancerArn:
+    Description: ARN of the Application Load Balancer
+    Value: !GetAtt ALBStack.Outputs.LoadBalancerArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-arn'
+
+  LoadBalancerDNSName:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ALBStack.Outputs.LoadBalancerDNSName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alb-dns'
+
+  BackendTargetGroupArn:
+    Description: ARN of the Backend Target Group
+    Value: !GetAtt ALBStack.Outputs.BackendTargetGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backend-tg-arn'
+
+  FrontendTargetGroupArn:
+    Description: ARN of the Frontend Target Group
+    Value: !GetAtt ALBStack.Outputs.FrontendTargetGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-tg-arn'
+
+  # ECS Outputs
+  ClusterArn:
+    Description: ARN of the ECS Cluster
+    Value: !GetAtt ECSClusterStack.Outputs.ClusterArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ecs-cluster-arn'
+
+  ClusterName:
+    Description: Name of the ECS Cluster
+    Value: !GetAtt ECSClusterStack.Outputs.ClusterName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ecs-cluster-name'
+
+  BackendServiceName:
+    Description: Name of the Backend ECS Service
+    Value: !GetAtt ECSClusterStack.Outputs.BackendServiceName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backend-service-name'
+
+  FrontendServiceName:
+    Description: Name of the Frontend ECS Service
+    Value: !GetAtt ECSClusterStack.Outputs.FrontendServiceName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-service-name'
+
+  BackendLogGroupName:
+    Description: CloudWatch Log Group for Backend
+    Value: !GetAtt ECSClusterStack.Outputs.BackendLogGroupName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backend-log-group'
+
+  FrontendLogGroupName:
+    Description: CloudWatch Log Group for Frontend
+    Value: !GetAtt ECSClusterStack.Outputs.FrontendLogGroupName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-frontend-log-group'

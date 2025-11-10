@@ -1,0 +1,373 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito User Pool with MFA and strong password policy (GCAS compliant)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  # MFA Configuration
+  MFAConfiguration:
+    Type: String
+    Description: MFA configuration (GCAS requires ON for production)
+    Default: "ON"
+    AllowedValues:
+      - "OFF"
+      - "OPTIONAL"
+      - "ON"
+
+  # Password Policy
+  PasswordMinimumLength:
+    Type: Number
+    Description: Minimum password length
+    Default: 12
+    MinValue: 8
+    MaxValue: 99
+
+  PasswordRequireUppercase:
+    Type: String
+    Description: Require uppercase letters
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  PasswordRequireLowercase:
+    Type: String
+    Description: Require lowercase letters
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  PasswordRequireNumbers:
+    Type: String
+    Description: Require numbers
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  PasswordRequireSymbols:
+    Type: String
+    Description: Require symbols
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  # Account Recovery
+  EmailVerificationMessage:
+    Type: String
+    Description: Email verification message
+    Default: "Your verification code is {####}"
+
+  EmailVerificationSubject:
+    Type: String
+    Description: Email verification subject
+    Default: "Your verification code"
+
+  # Session Duration
+  AccessTokenValidity:
+    Type: Number
+    Description: Access token validity in minutes
+    Default: 60
+    MinValue: 5
+    MaxValue: 1440
+
+  IdTokenValidity:
+    Type: Number
+    Description: ID token validity in minutes
+    Default: 60
+    MinValue: 5
+    MaxValue: 1440
+
+  RefreshTokenValidity:
+    Type: Number
+    Description: Refresh token validity in days
+    Default: 30
+    MinValue: 1
+    MaxValue: 3650
+
+Resources:
+  # ==============================================================================
+  # Cognito User Pool
+  # ==============================================================================
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${ProjectName}-${EnvironmentName}-user-pool'
+
+      # Account Settings
+      UsernameAttributes:
+        - email
+
+      AutoVerifiedAttributes:
+        - email
+
+      # MFA Configuration (GCAS requires MFA)
+      MfaConfiguration: !Ref MFAConfiguration
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+
+      # Password Policy (GCAS compliant)
+      Policies:
+        PasswordPolicy:
+          MinimumLength: !Ref PasswordMinimumLength
+          RequireUppercase: !Ref PasswordRequireUppercase
+          RequireLowercase: !Ref PasswordRequireLowercase
+          RequireNumbers: !Ref PasswordRequireNumbers
+          RequireSymbols: !Ref PasswordRequireSymbols
+          TemporaryPasswordValidityDays: 1
+
+      # Email Configuration
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+
+      EmailVerificationMessage: !Ref EmailVerificationMessage
+      EmailVerificationSubject: !Ref EmailVerificationSubject
+
+      # Schema (User Attributes)
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: family_name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: given_name
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        # Custom Attributes
+        - Name: organization_id
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+
+      # Account Recovery
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+      # User Pool Add-ons
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+
+      # Device Configuration
+      DeviceConfiguration:
+        ChallengeRequiredOnNewDevice: true
+        DeviceOnlyRememberedOnUserPrompt: true
+
+      # Lambda Triggers (placeholders)
+      # LambdaConfig:
+      #   PreSignUp: !GetAtt PreSignUpLambda.Arn
+      #   PostConfirmation: !GetAtt PostConfirmationLambda.Arn
+
+      UserPoolTags:
+        Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool'
+        Environment: !Ref EnvironmentName
+        Project: !Ref ProjectName
+
+  # ==============================================================================
+  # User Pool Client (Frontend App)
+  # ==============================================================================
+  UserPoolClientFrontend:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${ProjectName}-${EnvironmentName}-frontend-client'
+      UserPoolId: !Ref UserPool
+
+      # OAuth Configuration
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+
+      # Callback URLs (update for production)
+      CallbackURLs:
+        - !Sub 'https://${ProjectName}-${EnvironmentName}.example.com/callback'
+        - http://localhost:3000/callback
+      LogoutURLs:
+        - !Sub 'https://${ProjectName}-${EnvironmentName}.example.com/logout'
+        - http://localhost:3000/logout
+
+      # Token Validity
+      AccessTokenValidity: !Ref AccessTokenValidity
+      IdTokenValidity: !Ref IdTokenValidity
+      RefreshTokenValidity: !Ref RefreshTokenValidity
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+      # Security
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+
+      # Read/Write Attributes
+      ReadAttributes:
+        - email
+        - email_verified
+        - name
+        - family_name
+        - given_name
+        - phone_number
+        - custom:organization_id
+        - custom:role
+      WriteAttributes:
+        - email
+        - name
+        - family_name
+        - given_name
+        - phone_number
+        - custom:organization_id
+        - custom:role
+
+  # ==============================================================================
+  # User Pool Client (Backend API)
+  # ==============================================================================
+  UserPoolClientBackend:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${ProjectName}-${EnvironmentName}-backend-client'
+      UserPoolId: !Ref UserPool
+
+      # OAuth Configuration
+      AllowedOAuthFlows:
+        - client_credentials
+      AllowedOAuthScopes:
+        - !Sub '${ProjectName}-${EnvironmentName}/read'
+        - !Sub '${ProjectName}-${EnvironmentName}/write'
+      AllowedOAuthFlowsUserPoolClient: true
+
+      # Token Validity
+      AccessTokenValidity: !Ref AccessTokenValidity
+      IdTokenValidity: !Ref IdTokenValidity
+      RefreshTokenValidity: !Ref RefreshTokenValidity
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+      # Security
+      GenerateSecret: true
+      PreventUserExistenceErrors: ENABLED
+
+  # ==============================================================================
+  # User Pool Domain
+  # ==============================================================================
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub '${ProjectName}-${EnvironmentName}-auth'
+      UserPoolId: !Ref UserPool
+
+  # ==============================================================================
+  # User Pool Groups
+  # ==============================================================================
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Administrators
+      Description: System administrators with full access
+      UserPoolId: !Ref UserPool
+      Precedence: 1
+
+  ManagerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Managers
+      Description: Organization managers with administrative access
+      UserPoolId: !Ref UserPool
+      Precedence: 2
+
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Users
+      Description: Regular users with standard access
+      UserPoolId: !Ref UserPool
+      Precedence: 3
+
+Outputs:
+  UserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-id'
+
+  UserPoolArn:
+    Description: ARN of the Cognito User Pool
+    Value: !GetAtt UserPool.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-arn'
+
+  UserPoolClientIdFrontend:
+    Description: Client ID for Frontend app
+    Value: !Ref UserPoolClientFrontend
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-client-frontend-id'
+
+  UserPoolClientIdBackend:
+    Description: Client ID for Backend API
+    Value: !Ref UserPoolClientBackend
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-client-backend-id'
+
+  UserPoolDomain:
+    Description: User Pool Domain
+    Value: !Ref UserPoolDomain
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-domain'
+
+  UserPoolDomainUrl:
+    Description: User Pool Domain URL
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-pool-domain-url'
+
+  AdminGroupName:
+    Description: Name of the Admin Group
+    Value: !Ref AdminGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-admin-group'
+
+  ManagerGroupName:
+    Description: Name of the Manager Group
+    Value: !Ref ManagerGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-manager-group'
+
+  UserGroupName:
+    Description: Name of the User Group
+    Value: !Ref UserGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-user-group'

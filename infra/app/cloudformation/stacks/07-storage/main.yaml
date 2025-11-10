@@ -1,0 +1,177 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Storage Stack - S3 Buckets and CloudFront Distribution'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for S3 bucket encryption
+
+  # S3 Lifecycle Configuration
+  TransitionToIADays:
+    Type: Number
+    Description: Days to transition to Infrequent Access
+    Default: 90
+
+  TransitionToGlacierDays:
+    Type: Number
+    Description: Days to transition to Glacier
+    Default: 180
+
+  ExpirationDays:
+    Type: Number
+    Description: Days to expire log objects
+    Default: 365
+
+  VersioningEnabled:
+    Type: String
+    Description: Enable versioning for application bucket
+    Default: "true"
+
+  # CloudFront Configuration
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for custom domain (us-east-1)
+    Default: ""
+
+  CustomDomainName:
+    Type: String
+    Description: Custom domain name for CloudFront
+    Default: ""
+
+  DefaultTTL:
+    Type: Number
+    Description: Default TTL for CloudFront cache (seconds)
+    Default: 86400
+
+  MaxTTL:
+    Type: Number
+    Description: Maximum TTL for CloudFront cache (seconds)
+    Default: 31536000
+
+  MinTTL:
+    Type: Number
+    Description: Minimum TTL for CloudFront cache (seconds)
+    Default: 0
+
+  PriceClass:
+    Type: String
+    Description: CloudFront price class
+    Default: PriceClass_200
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # ==============================================================================
+  # S3 Buckets Stack
+  # ==============================================================================
+  S3BucketsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/storage/s3-buckets.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        KMSKeyId: !Ref KMSKeyId
+        TransitionToIADays: !Ref TransitionToIADays
+        TransitionToGlacierDays: !Ref TransitionToGlacierDays
+        ExpirationDays: !Ref ExpirationDays
+        VersioningEnabled: !Ref VersioningEnabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-s3-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # CloudFront Stack
+  # ==============================================================================
+  CloudFrontStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: S3BucketsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/storage/cloudfront.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        AppDataBucketName: !GetAtt S3BucketsStack.Outputs.AppDataBucketName
+        LogsBucketName: !GetAtt S3BucketsStack.Outputs.LogsBucketName
+        CertificateArn: !Ref CertificateArn
+        CustomDomainName: !Ref CustomDomainName
+        DefaultTTL: !Ref DefaultTTL
+        MaxTTL: !Ref MaxTTL
+        MinTTL: !Ref MinTTL
+        PriceClass: !Ref PriceClass
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # S3 Outputs
+  AppDataBucketName:
+    Description: Name of the Application Data bucket
+    Value: !GetAtt S3BucketsStack.Outputs.AppDataBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-app-data-bucket'
+
+  AppDataBucketArn:
+    Description: ARN of the Application Data bucket
+    Value: !GetAtt S3BucketsStack.Outputs.AppDataBucketArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-app-data-bucket-arn'
+
+  LogsBucketName:
+    Description: Name of the Logs bucket
+    Value: !GetAtt S3BucketsStack.Outputs.LogsBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-logs-bucket'
+
+  LogsBucketArn:
+    Description: ARN of the Logs bucket
+    Value: !GetAtt S3BucketsStack.Outputs.LogsBucketArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-logs-bucket-arn'
+
+  TemplatesBucketName:
+    Description: Name of the CloudFormation Templates bucket
+    Value: !GetAtt S3BucketsStack.Outputs.TemplatesBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-templates-bucket'
+
+  # CloudFront Outputs
+  DistributionId:
+    Description: CloudFront Distribution ID
+    Value: !GetAtt CloudFrontStack.Outputs.DistributionId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-id'
+
+  DistributionDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt CloudFrontStack.Outputs.DistributionDomainName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-domain'
+
+  CloudFrontOAIId:
+    Description: CloudFront Origin Access Identity ID
+    Value: !GetAtt CloudFrontStack.Outputs.CloudFrontOAIId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-oai-id'

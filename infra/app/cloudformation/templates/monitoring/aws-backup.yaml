@@ -1,0 +1,260 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Backup with automated backup plans for RDS and EBS'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for backup encryption
+
+  # Backup Schedule
+  BackupSchedule:
+    Type: String
+    Description: Cron expression for backup schedule
+    Default: "cron(0 17 * * ? *)"  # Daily at 17:00 UTC (02:00 JST)
+
+  # Backup Retention
+  DeleteAfterDays:
+    Type: Number
+    Description: Days to retain backups
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+
+  # Backup Window
+  BackupWindowMinutes:
+    Type: Number
+    Description: Backup window in minutes
+    Default: 60
+    MinValue: 60
+    MaxValue: 1440
+
+  # Backup Completion Window
+  CompletionWindowMinutes:
+    Type: Number
+    Description: Completion window in minutes
+    Default: 120
+    MinValue: 60
+    MaxValue: 1440
+
+  # Transition to Cold Storage
+  MoveToColdStorageAfterDays:
+    Type: Number
+    Description: Days to move to cold storage (0 = disabled)
+    Default: 30
+    MinValue: 0
+    MaxValue: 365
+
+Conditions:
+  EnableColdStorage: !Not [!Equals [!Ref MoveToColdStorageAfterDays, 0]]
+
+Resources:
+  # ==============================================================================
+  # Backup Vault
+  # ==============================================================================
+  BackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties:
+      BackupVaultName: !Sub '${ProjectName}-${EnvironmentName}-backup-vault'
+      EncryptionKeyArn: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/${KMSKeyId}'
+      BackupVaultTags:
+        Name: !Sub '${ProjectName}-${EnvironmentName}-backup-vault'
+        Environment: !Ref EnvironmentName
+        Project: !Ref ProjectName
+
+  # ==============================================================================
+  # IAM Role for AWS Backup
+  # ==============================================================================
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-backup-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: backup.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        - arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-backup-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Backup Plan
+  # ==============================================================================
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub '${ProjectName}-${EnvironmentName}-backup-plan'
+        BackupPlanRule:
+          - RuleName: DailyBackup
+            TargetBackupVault: !Ref BackupVault
+            ScheduleExpression: !Ref BackupSchedule
+            StartWindowMinutes: !Ref BackupWindowMinutes
+            CompletionWindowMinutes: !Ref CompletionWindowMinutes
+            Lifecycle:
+              DeleteAfterDays: !Ref DeleteAfterDays
+              MoveToColdStorageAfterDays: !If
+                - EnableColdStorage
+                - !Ref MoveToColdStorageAfterDays
+                - !Ref AWS::NoValue
+            RecoveryPointTags:
+              Name: !Sub '${ProjectName}-${EnvironmentName}-daily-backup'
+              Environment: !Ref EnvironmentName
+              Project: !Ref ProjectName
+              BackupType: Automated
+            CopyActions: []  # TODO: Add cross-region copy for DR
+      BackupPlanTags:
+        Name: !Sub '${ProjectName}-${EnvironmentName}-backup-plan'
+        Environment: !Ref EnvironmentName
+        Project: !Ref ProjectName
+
+  # ==============================================================================
+  # Backup Selection (RDS)
+  # ==============================================================================
+  BackupSelectionRDS:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: !Sub '${ProjectName}-${EnvironmentName}-rds-backup'
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources:
+          - !Sub 'arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:*'
+        Conditions:
+          StringEquals:
+            - ConditionKey: "aws:ResourceTag/Project"
+              ConditionValue: !Ref ProjectName
+            - ConditionKey: "aws:ResourceTag/Environment"
+              ConditionValue: !Ref EnvironmentName
+
+  # ==============================================================================
+  # Backup Selection (EBS Volumes)
+  # ==============================================================================
+  BackupSelectionEBS:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: !Sub '${ProjectName}-${EnvironmentName}-ebs-backup'
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources:
+          - !Sub 'arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*'
+        Conditions:
+          StringEquals:
+            - ConditionKey: "aws:ResourceTag/Project"
+              ConditionValue: !Ref ProjectName
+            - ConditionKey: "aws:ResourceTag/Environment"
+              ConditionValue: !Ref EnvironmentName
+
+  # ==============================================================================
+  # SNS Topic for Backup Notifications
+  # ==============================================================================
+  BackupNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-backup-notifications'
+      DisplayName: !Sub '${ProjectName} ${EnvironmentName} Backup Notifications'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-backup-notifications'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # EventBridge Rule for Backup Failures
+  # ==============================================================================
+  BackupFailureRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-failure'
+      Description: Alert on backup job failures
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.backup
+        detail-type:
+          - Backup Job State Change
+        detail:
+          state:
+            - FAILED
+            - ABORTED
+          backupVaultName:
+            - !Ref BackupVault
+      Targets:
+        - Arn: !Ref BackupNotificationTopic
+          Id: BackupFailureTarget
+
+  # EventBridge Permission for SNS
+  BackupFailureRulePermission:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref BackupNotificationTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 'sns:Publish'
+            Resource: !Ref BackupNotificationTopic
+
+Outputs:
+  BackupVaultName:
+    Description: Name of the Backup Vault
+    Value: !Ref BackupVault
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-vault'
+
+  BackupVaultArn:
+    Description: ARN of the Backup Vault
+    Value: !GetAtt BackupVault.BackupVaultArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-vault-arn'
+
+  BackupPlanId:
+    Description: ID of the Backup Plan
+    Value: !Ref BackupPlan
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-plan-id'
+
+  BackupPlanArn:
+    Description: ARN of the Backup Plan
+    Value: !GetAtt BackupPlan.BackupPlanArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-plan-arn'
+
+  BackupRoleArn:
+    Description: ARN of the Backup IAM Role
+    Value: !GetAtt BackupRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-role-arn'
+
+  BackupNotificationTopicArn:
+    Description: ARN of the Backup Notification SNS Topic
+    Value: !Ref BackupNotificationTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-notification-topic-arn'

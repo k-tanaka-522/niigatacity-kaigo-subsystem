@@ -112,6 +112,7 @@ Resources:
   # ElastiCache Replication Group
   CacheReplicationGroup:
     Type: AWS::ElastiCache::ReplicationGroup
+    DependsOn: AuthTokenSecret
     Properties:
       ReplicationGroupId: !Sub '${ProjectName}-${EnvironmentName}-redis'
       ReplicationGroupDescription: !Sub 'Redis cluster for ${ProjectName} ${EnvironmentName}'
@@ -131,6 +132,7 @@ Resources:
       TransitEncryptionEnabled: true
       TransitEncryptionMode: required
       AuthTokenEnabled: true
+      AuthToken: !Sub '{{resolve:secretsmanager:${AuthTokenSecret}:SecretString}}'
       # Backup settings
       SnapshotRetentionLimit: !Ref SnapshotRetentionLimit
       SnapshotWindow: !Ref SnapshotWindow
@@ -180,7 +182,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/elasticache/${ProjectName}-${EnvironmentName}-redis'
-      RetentionInDays: 30
+      RetentionInDays: 90  # GCAS準拠（最低90日保管）
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-${EnvironmentName}-redis-logs'

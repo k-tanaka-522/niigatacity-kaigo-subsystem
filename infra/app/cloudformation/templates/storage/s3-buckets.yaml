@@ -1,0 +1,312 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Buckets with versioning, lifecycle policies, and KMS encryption'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for S3 bucket encryption
+
+  # Lifecycle Configuration
+  TransitionToIADays:
+    Type: Number
+    Description: Days to transition to Infrequent Access
+    Default: 90
+    MinValue: 30
+    MaxValue: 365
+
+  TransitionToGlacierDays:
+    Type: Number
+    Description: Days to transition to Glacier
+    Default: 180
+    MinValue: 90
+    MaxValue: 730
+
+  ExpirationDays:
+    Type: Number
+    Description: Days to expire objects
+    Default: 365
+    MinValue: 180
+    MaxValue: 3650
+
+  # Versioning
+  VersioningEnabled:
+    Type: String
+    Description: Enable versioning for application bucket
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  # MFA Delete (production only)
+  MFADeleteEnabled:
+    Type: String
+    Description: Enable MFA delete (production only, requires manual configuration)
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+
+Conditions:
+  IsProduction: !Equals [!Ref EnvironmentName, "production"]
+  EnableVersioning: !Equals [!Ref VersioningEnabled, "true"]
+
+Resources:
+  # ==============================================================================
+  # Application Data Bucket (documents, uploads)
+  # ==============================================================================
+  AppDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-app-data'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KMSKeyId
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: !If [EnableVersioning, Enabled, Suspended]
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: !Ref TransitionToIADays
+                StorageClass: STANDARD_IA
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: !Ref TransitionToGlacierDays
+                StorageClass: GLACIER
+          - Id: ExpireOldVersions
+            Status: !If [EnableVersioning, Enabled, Disabled]
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 90
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Sub 'https://${ProjectName}-${EnvironmentName}.example.com'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+            AllowedHeaders:
+              - "*"
+            MaxAge: 3600
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-app-data'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Bucket Policy for App Data
+  AppDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppDataBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Deny unencrypted uploads
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${AppDataBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          # Deny insecure transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt AppDataBucket.Arn
+              - !Sub '${AppDataBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==============================================================================
+  # Logs Bucket (CloudFront, ALB, CloudTrail logs)
+  # ==============================================================================
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-logs'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Suspended
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireLogs
+            Status: Enabled
+            ExpirationInDays: !Ref ExpirationDays
+          - Id: TransitionLogsToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: !Ref TransitionToIADays
+                StorageClass: STANDARD_IA
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Bucket Policy for Logs
+  LogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Allow CloudFront logging
+          - Sid: AWSCloudFrontWrite
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${LogsBucket.Arn}/cloudfront/*'
+          # Allow ALB logging
+          - Sid: AWSALBWrite
+            Effect: Allow
+            Principal:
+              Service: elasticloadbalancing.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${LogsBucket.Arn}/alb/*'
+          # Deny insecure transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt LogsBucket.Arn
+              - !Sub '${LogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==============================================================================
+  # CloudFormation Templates Bucket (for nested stacks)
+  # ==============================================================================
+  TemplatesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-cfn-templates-${EnvironmentName}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-cfn-templates-${EnvironmentName}'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Bucket Policy for Templates
+  TemplatesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TemplatesBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Allow CloudFormation to read templates
+          - Sid: AllowCloudFormationRead
+            Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${TemplatesBucket.Arn}/*'
+          # Deny insecure transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt TemplatesBucket.Arn
+              - !Sub '${TemplatesBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+Outputs:
+  AppDataBucketName:
+    Description: Name of the Application Data bucket
+    Value: !Ref AppDataBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-app-data-bucket'
+
+  AppDataBucketArn:
+    Description: ARN of the Application Data bucket
+    Value: !GetAtt AppDataBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-app-data-bucket-arn'
+
+  LogsBucketName:
+    Description: Name of the Logs bucket
+    Value: !Ref LogsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-logs-bucket'
+
+  LogsBucketArn:
+    Description: ARN of the Logs bucket
+    Value: !GetAtt LogsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-logs-bucket-arn'
+
+  TemplatesBucketName:
+    Description: Name of the CloudFormation Templates bucket
+    Value: !Ref TemplatesBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-templates-bucket'
+
+  TemplatesBucketArn:
+    Description: ARN of the CloudFormation Templates bucket
+    Value: !GetAtt TemplatesBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-templates-bucket-arn'

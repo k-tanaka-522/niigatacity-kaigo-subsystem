@@ -1,0 +1,415 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Alarms for ALB, ECS, RDS, and ElastiCache'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  # SNS Topic for Alarms
+  SNSTopicArn:
+    Type: String
+    Description: ARN of SNS topic for alarm notifications
+    Default: ""
+
+  # Resource Identifiers
+  LoadBalancerFullName:
+    Type: String
+    Description: Full name of the ALB (e.g., app/myapp-dev-alb/1234567890abcdef)
+    Default: ""
+
+  TargetGroupFullName:
+    Type: String
+    Description: Full name of the Target Group
+    Default: ""
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS Cluster
+    Default: ""
+
+  ECSServiceName:
+    Type: String
+    Description: Name of the ECS Service
+    Default: ""
+
+  DBInstanceId:
+    Type: String
+    Description: RDS DB Instance ID
+    Default: ""
+
+  ReplicationGroupId:
+    Type: String
+    Description: ElastiCache Replication Group ID
+    Default: ""
+
+  # Alarm Thresholds
+  ALBUnhealthyHostThreshold:
+    Type: Number
+    Description: Threshold for unhealthy hosts (count)
+    Default: 1
+
+  ALB5XXErrorRateThreshold:
+    Type: Number
+    Description: Threshold for 5XX error rate (%)
+    Default: 5
+
+  ECSCPUThreshold:
+    Type: Number
+    Description: Threshold for ECS CPU utilization (%)
+    Default: 80
+
+  ECSMemoryThreshold:
+    Type: Number
+    Description: Threshold for ECS memory utilization (%)
+    Default: 80
+
+  RDSCPUThreshold:
+    Type: Number
+    Description: Threshold for RDS CPU utilization (%)
+    Default: 80
+
+  RDSConnectionsThreshold:
+    Type: Number
+    Description: Threshold for RDS connections (count)
+    Default: 80
+
+  RedisCPUThreshold:
+    Type: Number
+    Description: Threshold for Redis CPU utilization (%)
+    Default: 75
+
+  RedisMemoryThreshold:
+    Type: Number
+    Description: Threshold for Redis memory utilization (%)
+    Default: 80
+
+Conditions:
+  HasSNSTopic: !Not [!Equals [!Ref SNSTopicArn, ""]]
+  NoSNSTopic: !Equals [!Ref SNSTopicArn, ""]
+  HasALB: !Not [!Equals [!Ref LoadBalancerFullName, ""]]
+  HasECS: !And
+    - !Not [!Equals [!Ref ECSClusterName, ""]]
+    - !Not [!Equals [!Ref ECSServiceName, ""]]
+  HasRDS: !Not [!Equals [!Ref DBInstanceId, ""]]
+  HasRedis: !Not [!Equals [!Ref ReplicationGroupId, ""]]
+
+Resources:
+  # ==============================================================================
+  # SNS Topic (if not provided)
+  # ==============================================================================
+  AlarmSNSTopic:
+    Type: AWS::SNS::Topic
+    Condition: NoSNSTopic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-alarms'
+      DisplayName: !Sub '${ProjectName} ${EnvironmentName} Alarms'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alarms'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # ALB Alarms
+  # ==============================================================================
+  ALBUnhealthyHostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasALB
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-alb-unhealthy-hosts'
+      AlarmDescription: Alert when ALB has unhealthy hosts
+      MetricName: UnHealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: !Ref ALBUnhealthyHostThreshold
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !Ref TargetGroupFullName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  ALB5XXErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasALB
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-alb-5xx-errors'
+      AlarmDescription: Alert when ALB has high 5XX error rate
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  ALBResponseTimeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasALB
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-alb-response-time'
+      AlarmDescription: Alert when ALB response time is high
+      MetricName: TargetResponseTime
+      Namespace: AWS/ApplicationELB
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !Ref LoadBalancerFullName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  # ==============================================================================
+  # ECS Alarms
+  # ==============================================================================
+  ECSCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasECS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-ecs-cpu-high'
+      AlarmDescription: Alert when ECS CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref ECSCPUThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: ServiceName
+          Value: !Ref ECSServiceName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  ECSMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasECS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-ecs-memory-high'
+      AlarmDescription: Alert when ECS memory utilization is high
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref ECSMemoryThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: ServiceName
+          Value: !Ref ECSServiceName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  ECSRunningTasksAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasECS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-ecs-no-running-tasks'
+      AlarmDescription: Alert when no ECS tasks are running
+      MetricName: RunningTaskCount
+      Namespace: ECS/ContainerInsights
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: ClusterName
+          Value: !Ref ECSClusterName
+        - Name: ServiceName
+          Value: !Ref ECSServiceName
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: breaching
+
+  # ==============================================================================
+  # RDS Alarms
+  # ==============================================================================
+  RDSCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRDS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-rds-cpu-high'
+      AlarmDescription: Alert when RDS CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref RDSCPUThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstanceId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  RDSConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRDS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-rds-connections-high'
+      AlarmDescription: Alert when RDS connections are high
+      MetricName: DatabaseConnections
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref RDSConnectionsThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstanceId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  RDSFreeStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRDS
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-rds-free-storage-low'
+      AlarmDescription: Alert when RDS free storage is low
+      MetricName: FreeStorageSpace
+      Namespace: AWS/RDS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10737418240  # 10 GB in bytes
+      ComparisonOperator: LessThanThreshold
+      Dimensions:
+        - Name: DBInstanceIdentifier
+          Value: !Ref DBInstanceId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  # ==============================================================================
+  # ElastiCache (Redis) Alarms
+  # ==============================================================================
+  RedisCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRedis
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-redis-cpu-high'
+      AlarmDescription: Alert when Redis CPU utilization is high
+      MetricName: CPUUtilization
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref RedisCPUThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref ReplicationGroupId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  RedisMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRedis
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-redis-memory-high'
+      AlarmDescription: Alert when Redis memory utilization is high
+      MetricName: DatabaseMemoryUsagePercentage
+      Namespace: AWS/ElastiCache
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: !Ref RedisMemoryThreshold
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref ReplicationGroupId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+  RedisEvictionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasRedis
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-redis-evictions'
+      AlarmDescription: Alert when Redis has evictions
+      MetricName: Evictions
+      Namespace: AWS/ElastiCache
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 100
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ReplicationGroupId
+          Value: !Ref ReplicationGroupId
+      AlarmActions: !If
+        - HasSNSTopic
+        - - !Ref SNSTopicArn
+        - !Ref AWS::NoValue
+      TreatMissingData: notBreaching
+
+Outputs:
+  SNSTopicArn:
+    Description: ARN of the SNS topic for alarms
+    Value: !If
+      - HasSNSTopic
+      - !Ref SNSTopicArn
+      - !Ref AlarmSNSTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alarm-sns-topic-arn'

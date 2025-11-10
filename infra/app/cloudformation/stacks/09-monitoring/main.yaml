@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Monitoring Stack - CloudWatch Alarms and AWS Backup'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  # CloudWatch Alarms Parameters
+  SNSTopicArn:
+    Type: String
+    Description: ARN of SNS topic for alarm notifications
+    Default: ""
+
+  LoadBalancerFullName:
+    Type: String
+    Description: Full name of the ALB
+    Default: ""
+
+  TargetGroupFullName:
+    Type: String
+    Description: Full name of the Target Group
+    Default: ""
+
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS Cluster
+    Default: ""
+
+  ECSServiceName:
+    Type: String
+    Description: Name of the ECS Service
+    Default: ""
+
+  DBInstanceId:
+    Type: String
+    Description: RDS DB Instance ID
+    Default: ""
+
+  ReplicationGroupId:
+    Type: String
+    Description: ElastiCache Replication Group ID
+    Default: ""
+
+  # Alarm Thresholds
+  ALBUnhealthyHostThreshold:
+    Type: Number
+    Description: Threshold for unhealthy hosts
+    Default: 1
+
+  ECSCPUThreshold:
+    Type: Number
+    Description: Threshold for ECS CPU utilization (%)
+    Default: 80
+
+  ECSMemoryThreshold:
+    Type: Number
+    Description: Threshold for ECS memory utilization (%)
+    Default: 80
+
+  RDSCPUThreshold:
+    Type: Number
+    Description: Threshold for RDS CPU utilization (%)
+    Default: 80
+
+  RDSConnectionsThreshold:
+    Type: Number
+    Description: Threshold for RDS connections
+    Default: 80
+
+  RedisCPUThreshold:
+    Type: Number
+    Description: Threshold for Redis CPU utilization (%)
+    Default: 75
+
+  RedisMemoryThreshold:
+    Type: Number
+    Description: Threshold for Redis memory utilization (%)
+    Default: 80
+
+  # AWS Backup Parameters
+  KMSKeyId:
+    Type: String
+    Description: KMS Key ID for backup encryption
+
+  BackupSchedule:
+    Type: String
+    Description: Cron expression for backup schedule
+    Default: "cron(0 17 * * ? *)"
+
+  DeleteAfterDays:
+    Type: Number
+    Description: Days to retain backups
+    Default: 7
+
+  BackupWindowMinutes:
+    Type: Number
+    Description: Backup window in minutes
+    Default: 60
+
+  CompletionWindowMinutes:
+    Type: Number
+    Description: Completion window in minutes
+    Default: 120
+
+  MoveToColdStorageAfterDays:
+    Type: Number
+    Description: Days to move to cold storage (0 = disabled)
+    Default: 30
+
+  TemplateBucketName:
+    Type: String
+    Description: S3 bucket name where nested stack templates are stored
+
+Resources:
+  # ==============================================================================
+  # CloudWatch Alarms Stack
+  # ==============================================================================
+  CloudWatchAlarmsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/cloudwatch-alarms.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        SNSTopicArn: !Ref SNSTopicArn
+        LoadBalancerFullName: !Ref LoadBalancerFullName
+        TargetGroupFullName: !Ref TargetGroupFullName
+        ECSClusterName: !Ref ECSClusterName
+        ECSServiceName: !Ref ECSServiceName
+        DBInstanceId: !Ref DBInstanceId
+        ReplicationGroupId: !Ref ReplicationGroupId
+        ALBUnhealthyHostThreshold: !Ref ALBUnhealthyHostThreshold
+        ECSCPUThreshold: !Ref ECSCPUThreshold
+        ECSMemoryThreshold: !Ref ECSMemoryThreshold
+        RDSCPUThreshold: !Ref RDSCPUThreshold
+        RDSConnectionsThreshold: !Ref RDSConnectionsThreshold
+        RedisCPUThreshold: !Ref RedisCPUThreshold
+        RedisMemoryThreshold: !Ref RedisMemoryThreshold
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudwatch-alarms-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # AWS Backup Stack
+  # ==============================================================================
+  AWSBackupStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/aws-backup.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        KMSKeyId: !Ref KMSKeyId
+        BackupSchedule: !Ref BackupSchedule
+        DeleteAfterDays: !Ref DeleteAfterDays
+        BackupWindowMinutes: !Ref BackupWindowMinutes
+        CompletionWindowMinutes: !Ref CompletionWindowMinutes
+        MoveToColdStorageAfterDays: !Ref MoveToColdStorageAfterDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-backup-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # CloudWatch Outputs
+  SNSTopicArn:
+    Description: ARN of the SNS topic for alarms
+    Value: !GetAtt CloudWatchAlarmsStack.Outputs.SNSTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-alarm-sns-topic-arn'
+
+  # Backup Outputs
+  BackupVaultName:
+    Description: Name of the Backup Vault
+    Value: !GetAtt AWSBackupStack.Outputs.BackupVaultName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-vault'
+
+  BackupVaultArn:
+    Description: ARN of the Backup Vault
+    Value: !GetAtt AWSBackupStack.Outputs.BackupVaultArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-vault-arn'
+
+  BackupPlanId:
+    Description: ID of the Backup Plan
+    Value: !GetAtt AWSBackupStack.Outputs.BackupPlanId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-plan-id'
+
+  BackupPlanArn:
+    Description: ARN of the Backup Plan
+    Value: !GetAtt AWSBackupStack.Outputs.BackupPlanArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-plan-arn'
+
+  BackupNotificationTopicArn:
+    Description: ARN of the Backup Notification SNS Topic
+    Value: !GetAtt AWSBackupStack.Outputs.BackupNotificationTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-backup-notification-topic-arn'

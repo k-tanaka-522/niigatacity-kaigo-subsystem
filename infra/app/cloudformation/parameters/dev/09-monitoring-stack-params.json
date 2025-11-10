@@ -1,0 +1,94 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "SNSTopicArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "LoadBalancerFullName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "TargetGroupFullName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ECSClusterName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ECSServiceName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DBInstanceId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ReplicationGroupId",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "ALBUnhealthyHostThreshold",
+    "ParameterValue": "1"
+  },
+  {
+    "ParameterKey": "ECSCPUThreshold",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "ECSMemoryThreshold",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "RDSCPUThreshold",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "RDSConnectionsThreshold",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "RedisCPUThreshold",
+    "ParameterValue": "75"
+  },
+  {
+    "ParameterKey": "RedisMemoryThreshold",
+    "ParameterValue": "80"
+  },
+  {
+    "ParameterKey": "KMSKeyId",
+    "ParameterValue": "PLACEHOLDER-KMS-KEY-ID"
+  },
+  {
+    "ParameterKey": "BackupSchedule",
+    "ParameterValue": "cron(0 17 * * ? *)"
+  },
+  {
+    "ParameterKey": "DeleteAfterDays",
+    "ParameterValue": "7"
+  },
+  {
+    "ParameterKey": "BackupWindowMinutes",
+    "ParameterValue": "60"
+  },
+  {
+    "ParameterKey": "CompletionWindowMinutes",
+    "ParameterValue": "120"
+  },
+  {
+    "ParameterKey": "MoveToColdStorageAfterDays",
+    "ParameterValue": "30"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+  }
+]

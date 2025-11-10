@@ -1,0 +1,259 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront Distribution with S3 origin and OAI'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: Environment name (dev, staging, production)
+    AllowedValues:
+      - dev
+      - staging
+      - production
+
+  ProjectName:
+    Type: String
+    Description: Project name for resource naming
+
+  AppDataBucketName:
+    Type: String
+    Description: Name of the S3 bucket containing application data
+
+  LogsBucketName:
+    Type: String
+    Description: Name of the S3 bucket for CloudFront logs
+
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for custom domain (us-east-1 region)
+    Default: ""
+
+  CustomDomainName:
+    Type: String
+    Description: Custom domain name for CloudFront (e.g., cdn.example.com)
+    Default: ""
+
+  # Cache Behavior
+  DefaultTTL:
+    Type: Number
+    Description: Default TTL in seconds
+    Default: 86400
+    MinValue: 0
+    MaxValue: 31536000
+
+  MaxTTL:
+    Type: Number
+    Description: Maximum TTL in seconds
+    Default: 31536000
+    MinValue: 0
+    MaxValue: 31536000
+
+  MinTTL:
+    Type: Number
+    Description: Minimum TTL in seconds
+    Default: 0
+    MinValue: 0
+    MaxValue: 31536000
+
+  # Price Class
+  PriceClass:
+    Type: String
+    Description: CloudFront price class
+    Default: PriceClass_200
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+
+Conditions:
+  HasCustomDomain: !And
+    - !Not [!Equals [!Ref CertificateArn, ""]]
+    - !Not [!Equals [!Ref CustomDomainName, ""]]
+
+Resources:
+  # ==============================================================================
+  # Origin Access Identity (OAI)
+  # ==============================================================================
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub 'OAI for ${ProjectName}-${EnvironmentName}'
+
+  # ==============================================================================
+  # S3 Bucket Policy (allow CloudFront OAI)
+  # ==============================================================================
+  AppDataBucketPolicyUpdate:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AppDataBucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Allow CloudFront OAI to read
+          - Sid: AllowCloudFrontOAI
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${AppDataBucketName}/*'
+          # Deny unencrypted uploads
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub 'arn:aws:s3:::${AppDataBucketName}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          # Deny insecure transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !Sub 'arn:aws:s3:::${AppDataBucketName}'
+              - !Sub 'arn:aws:s3:::${AppDataBucketName}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==============================================================================
+  # CloudFront Distribution
+  # ==============================================================================
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${ProjectName}-${EnvironmentName} CDN'
+        HttpVersion: http2and3
+        PriceClass: !Ref PriceClass
+
+        # Custom Domain (optional)
+        Aliases: !If
+          - HasCustomDomain
+          - - !Ref CustomDomainName
+          - !Ref AWS::NoValue
+
+        # SSL Certificate (optional)
+        ViewerCertificate: !If
+          - HasCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+        # Origins
+        Origins:
+          - Id: S3Origin
+            DomainName: !Sub '${AppDataBucketName}.s3.${AWS::Region}.amazonaws.com'
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+            OriginShield:
+              Enabled: false
+
+        # Default Cache Behavior
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          Compress: true
+          DefaultTTL: !Ref DefaultTTL
+          MaxTTL: !Ref MaxTTL
+          MinTTL: !Ref MinTTL
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+
+        # Custom Error Responses
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 404
+            ResponsePagePath: /404.html
+            ErrorCachingMinTTL: 300
+
+        # Logging
+        Logging:
+          Bucket: !Sub '${LogsBucketName}.s3.amazonaws.com'
+          Prefix: cloudfront/
+          IncludeCookies: false
+
+        # Geo Restriction (none)
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudfront'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Cache Policy (optional, for custom cache settings)
+  # ==============================================================================
+  CustomCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${ProjectName}-${EnvironmentName}-cache-policy'
+        Comment: Custom cache policy for application data
+        DefaultTTL: !Ref DefaultTTL
+        MaxTTL: !Ref MaxTTL
+        MinTTL: !Ref MinTTL
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Origin
+              - Access-Control-Request-Headers
+              - Access-Control-Request-Method
+          CookiesConfig:
+            CookieBehavior: none
+
+Outputs:
+  DistributionId:
+    Description: CloudFront Distribution ID
+    Value: !Ref CloudFrontDistribution
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-id'
+
+  DistributionDomainName:
+    Description: CloudFront Distribution Domain Name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-domain'
+
+  CloudFrontOAIId:
+    Description: CloudFront Origin Access Identity ID
+    Value: !Ref CloudFrontOAI
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-oai-id'
+
+  CloudFrontOAICanonicalUserId:
+    Description: CloudFront OAI Canonical User ID
+    Value: !GetAtt CloudFrontOAI.S3CanonicalUserId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-cloudfront-oai-canonical-user-id'
