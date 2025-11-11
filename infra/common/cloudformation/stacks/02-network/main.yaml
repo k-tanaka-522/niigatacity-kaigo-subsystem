@@ -230,6 +230,15 @@ Outputs:
     Condition: CreateTransitGateway
     Description: 'Transit Gateway ID'
     Value: !GetAtt TransitGatewayStack.Outputs.TransitGatewayId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-TransitGatewayId'
+
+  TransitGatewayRouteTableId:
+    Condition: CreateTransitGateway
+    Description: 'Transit Gateway Route Table ID for App VPC'
+    Value: !GetAtt TransitGatewayStack.Outputs.AppRouteTableId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-TransitGatewayRouteTableId'
 
   # Common VPC Outputs
   CommonVPCId:

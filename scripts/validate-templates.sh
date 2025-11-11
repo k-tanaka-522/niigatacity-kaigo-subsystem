@@ -33,8 +33,11 @@ validate_template() {
 
   echo -n "Validating: ${template_name}... "
 
+  # Windows環境での file:// プレフィックス問題回避のため、テンプレートを直接読み込む
+  local template_body=$(cat "${template_path}")
+
   if aws cloudformation validate-template \
-    --template-body file://"${template_path}" \
+    --template-body "${template_body}" \
     --region ap-northeast-1 \
     --output text > /dev/null 2>&1; then
     echo -e "${GREEN}✓ PASS${NC}"
@@ -44,7 +47,7 @@ validate_template() {
     FAILED=$((FAILED + 1))
     echo -e "${RED}Error details:${NC}"
     aws cloudformation validate-template \
-      --template-body file://"${template_path}" \
+      --template-body "${template_body}" \
       --region ap-northeast-1 2>&1 | tail -5
     echo ""
   fi

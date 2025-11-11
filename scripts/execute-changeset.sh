@@ -35,6 +35,9 @@ CHANGESET_NAME=$2
 # AWS リージョン設定
 AWS_REGION=${AWS_REGION:-ap-northeast-1}
 
+# スクリプトのディレクトリを取得
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 # 環境を推定（Stack名から）
 ENVIRONMENT="dev"
 if [[ "${STACK_NAME}" == *"-staging-"* ]]; then
@@ -43,27 +46,42 @@ elif [[ "${STACK_NAME}" == *"-production-"* ]] || [[ "${STACK_NAME}" == *"-prod-
   ENVIRONMENT="production"
 fi
 
-# 環境ごとのAWS Profileを設定
-get_aws_profile() {
-  local environment=$1
-  case "${environment}" in
-    production)
-      echo "niigata-kaigo-prod"
-      ;;
-    staging)
-      echo "niigata-kaigo-stg"
-      ;;
-    dev)
-      echo "default"
-      ;;
-    *)
-      echo "default"
-      ;;
-  esac
+# スタック名からアカウント種別を判定
+# 命名規則: niigata-kaigo-{environment}-{account-type}-{stack-name}
+get_account_type_from_stack_name() {
+  local stack_name=$1
+
+  # Stack名に "common" が含まれる → common
+  if [[ "$stack_name" =~ -common- ]]; then
+    echo "common"
+    return
+  fi
+
+  # Stack名に "app" が含まれる → app
+  if [[ "$stack_name" =~ -app- ]]; then
+    echo "app"
+    return
+  fi
+
+  # デフォルト: common（旧スタック名との互換性）
+  echo "common"
 }
 
-AWS_PROFILE=$(get_aws_profile "${ENVIRONMENT}")
-export AWS_PROFILE
+# Multi-Account対応: AssumeRole実行（GitHub Actions実行時のみ）
+ACCOUNT_TYPE=$(get_account_type_from_stack_name "${STACK_NAME}")
+
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  # GitHub Actions実行時: AssumeRole実行
+  echo "ℹ️  GitHub Actions実行モード: AssumeRoleを実行します"
+  source "${SCRIPT_DIR}/multi-account/assume-role.sh" "${ENVIRONMENT}" "${ACCOUNT_TYPE}"
+  PROFILE_INFO="(AssumeRole: ${ENVIRONMENT}-${ACCOUNT_TYPE})"
+else
+  # ローカル実行時: AWS Profile切り替え
+  echo "ℹ️  ローカル実行モード: AWS Profileを使用します"
+  AWS_PROFILE="niigata-kaigo-${ENVIRONMENT}-${ACCOUNT_TYPE}"
+  export AWS_PROFILE
+  PROFILE_INFO="${AWS_PROFILE}"
+fi
 
 # ログディレクトリの作成
 LOG_DIR="logs/deployments"
@@ -81,23 +99,26 @@ log "========================================"
 log "CloudFormation Change Set 実行"
 log "========================================"
 log "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
-log "Executor: ${USER}"
+log "Executor: ${USER:-unknown}"
 log "Stack: ${STACK_NAME}"
 log "Change Set: ${CHANGESET_NAME}"
 log "Environment: ${ENVIRONMENT}"
-log "AWS Profile: ${AWS_PROFILE}"
+log "Account Type: ${ACCOUNT_TYPE}"
+log "AWS Profile: ${PROFILE_INFO}"
 log "Account ID: $(aws sts get-caller-identity --query Account --output text)"
 log "Region: ${AWS_REGION}"
 log "Log File: ${LOG_FILE}"
 log ""
 
+echo ""
 echo "========================================"
 echo "CloudFormation Change Set 実行"
 echo "========================================"
 echo "Stack: ${STACK_NAME}"
 echo "Change Set: ${CHANGESET_NAME}"
 echo "Environment: ${ENVIRONMENT}"
-echo "AWS Profile: ${AWS_PROFILE}"
+echo "Account Type: ${ACCOUNT_TYPE}"
+echo "AWS Profile: ${PROFILE_INFO}"
 echo "Account ID: $(aws sts get-caller-identity --query Account --output text)"
 echo "Region: ${AWS_REGION}"
 echo "Log File: ${LOG_FILE}"

@@ -1,282 +1,222 @@
 #!/bin/bash
+# =============================================================================
+# deploy-all.sh
+#
+# Multi-Account Full Stack Deployment Automation
+#
+# このスクリプトは以下を自動化します：
+# 1. S3バケット作成・テンプレートアップロード
+# 2. Common Account Network Stack デプロイ
+# 3. App Stack パラメータ自動生成
+# 4. App Account Network Stack デプロイ
+#
+# Usage:
+#   ./scripts/deploy-all.sh <environment>
+#
+# Example:
+#   ./scripts/deploy-all.sh staging
+# =============================================================================
 
-#######################################
-# CloudFormation Deploy All Stacks Script
-# Description: Deploys all CloudFormation stacks in dependency order
-# Usage: ./scripts/deploy-all.sh <account-type> <environment>
-# Example: ./scripts/deploy-all.sh common staging
-#          ./scripts/deploy-all.sh app dev
-#######################################
+set -euo pipefail
 
-set -e
-
-# Color codes
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Arguments
-ACCOUNT_TYPE=$1
-ENVIRONMENT=$2
-REGION="ap-northeast-1"
-
-# Function to show usage
-usage() {
-  echo "Usage: $0 <account-type> <environment>"
-  echo ""
-  echo "Arguments:"
-  echo "  account-type: 'common' or 'app'"
-  echo "  environment:  'dev', 'staging', or 'production'"
-  echo ""
-  echo "Examples:"
-  echo "  $0 common staging"
-  echo "  $0 app dev"
+# =============================================================================
+# 引数チェック
+# =============================================================================
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 <environment>"
+  echo "Example: $0 staging"
   exit 1
-}
-
-# Validate arguments
-if [ -z "${ACCOUNT_TYPE}" ] || [ -z "${ENVIRONMENT}" ]; then
-  echo -e "${RED}Error: Missing required arguments${NC}"
-  usage
 fi
 
-if [ "${ACCOUNT_TYPE}" != "common" ] && [ "${ACCOUNT_TYPE}" != "app" ]; then
-  echo -e "${RED}Error: account-type must be 'common' or 'app'${NC}"
-  usage
+ENVIRONMENT=$1
+PROJECT_NAME="niigata-kaigo"
+
+echo "========================================="
+echo "Multi-Account Full Stack Deployment"
+echo "========================================="
+echo "Environment: ${ENVIRONMENT}"
+echo "Project: ${PROJECT_NAME}"
+echo ""
+echo "This script will deploy:"
+echo "  1. Common Account Network Stack"
+echo "  2. App Account Network Stack (with auto-generated parameters)"
+echo ""
+read -p "Continue? (yes/no): " CONFIRM
+if [[ "$CONFIRM" != "yes" ]]; then
+  echo "Deployment cancelled."
+  exit 0
 fi
-
-if [ "${ENVIRONMENT}" != "dev" ] && [ "${ENVIRONMENT}" != "staging" ] && [ "${ENVIRONMENT}" != "production" ]; then
-  echo -e "${RED}Error: environment must be 'dev', 'staging', or 'production'${NC}"
-  usage
-fi
-
-# Get AWS Profile based on environment
-get_aws_profile() {
-  local environment=$1
-  case "${environment}" in
-    production)
-      echo "niigata-kaigo-prod"
-      ;;
-    staging)
-      echo "niigata-kaigo-stg"
-      ;;
-    dev)
-      echo "default"
-      ;;
-    *)
-      echo "default"
-      ;;
-  esac
-}
-
-AWS_PROFILE=$(get_aws_profile "${ENVIRONMENT}")
-export AWS_PROFILE
-
-echo "========================================"
-echo "CloudFormation Deploy All Stacks"
-echo "========================================"
-echo "Account Type: ${ACCOUNT_TYPE}"
-echo "Environment:  ${ENVIRONMENT}"
-echo "AWS Profile:  ${AWS_PROFILE}"
-echo "Account ID:   $(aws sts get-caller-identity --query Account --output text)"
-echo "Region:       ${REGION}"
 echo ""
 
-# Function to deploy a stack using Change Sets
-deploy_stack() {
-  local stack_name=$1
-  local template=$2
-  local parameters=$3
-  local capabilities=$4
+# =============================================================================
+# Phase 1: S3バケット作成・テンプレートアップロード
+# =============================================================================
+echo "========================================="
+echo "Phase 1: S3 Bucket & Template Upload"
+echo "========================================="
 
-  echo ""
-  echo "========================================"
-  echo "Deploying: ${stack_name}"
-  echo "========================================"
-  echo "Template:    ${template}"
-  echo "Parameters:  ${parameters}"
-  echo "Capabilities: ${capabilities}"
-  echo ""
-
-  # Check if stack exists
-  set +e
-  aws cloudformation describe-stacks \
-    --stack-name "${stack_name}" \
-    --region "${REGION}" \
-    --output text > /dev/null 2>&1
-  STACK_EXISTS=$?
-  set -e
-
-  if [ $STACK_EXISTS -eq 0 ]; then
-    CHANGE_SET_TYPE="UPDATE"
-    echo "Stack exists. Creating UPDATE Change Set..."
-  else
-    CHANGE_SET_TYPE="CREATE"
-    echo "Stack does not exist. Creating CREATE Change Set..."
-  fi
-
-  # Create Change Set
-  CHANGESET_NAME="${stack_name}-changeset-$(date +%Y%m%d-%H%M%S)"
-
-  echo "Change Set Name: ${CHANGESET_NAME}"
-  echo ""
-
-  aws cloudformation create-change-set \
-    --stack-name "${stack_name}" \
-    --change-set-name "${CHANGESET_NAME}" \
-    --template-body file://"${template}" \
-    --parameters file://"${parameters}" \
-    --capabilities ${capabilities} \
-    --change-set-type "${CHANGE_SET_TYPE}" \
-    --region "${REGION}" \
-    --output text > /dev/null
-
-  echo "Waiting for Change Set to be created..."
-  aws cloudformation wait change-set-create-complete \
-    --stack-name "${stack_name}" \
-    --change-set-name "${CHANGESET_NAME}" \
-    --region "${REGION}"
-
-  echo -e "${GREEN}✓ Change Set created${NC}"
-  echo ""
-
-  # Display Change Set
-  echo "Change Set Details:"
-  echo "----------------------------------------"
-  aws cloudformation describe-change-set \
-    --stack-name "${stack_name}" \
-    --change-set-name "${CHANGESET_NAME}" \
-    --region "${REGION}" \
-    --query '{Status:Status,ExecutionStatus:ExecutionStatus,Changes:Changes[*].{Action:ResourceChange.Action,LogicalId:ResourceChange.LogicalResourceId,ResourceType:ResourceChange.ResourceType}}' \
-    --output table
-
-  echo ""
-  echo -e "${YELLOW}⚠️  Review the Change Set above${NC}"
-  echo -n "Do you want to execute this Change Set? (yes/no): "
-  read -r CONFIRMATION
-
-  if [ "${CONFIRMATION}" != "yes" ]; then
-    echo "Skipping stack deployment."
-    echo "Deleting Change Set..."
-    aws cloudformation delete-change-set \
-      --stack-name "${stack_name}" \
-      --change-set-name "${CHANGESET_NAME}" \
-      --region "${REGION}"
-    return 1
-  fi
-
-  echo ""
-  echo "Executing Change Set..."
-  aws cloudformation execute-change-set \
-    --stack-name "${stack_name}" \
-    --change-set-name "${CHANGESET_NAME}" \
-    --region "${REGION}"
-
-  echo "Waiting for stack operation to complete..."
-  echo "(This may take several minutes)"
-
-  if [ "${CHANGE_SET_TYPE}" == "CREATE" ]; then
-    aws cloudformation wait stack-create-complete \
-      --stack-name "${stack_name}" \
-      --region "${REGION}"
-  else
-    aws cloudformation wait stack-update-complete \
-      --stack-name "${stack_name}" \
-      --region "${REGION}"
-  fi
-
-  echo -e "${GREEN}✓ Stack deployed successfully!${NC}"
-  echo ""
-
-  # Display Outputs
-  echo "Stack Outputs:"
-  echo "----------------------------------------"
-  aws cloudformation describe-stacks \
-    --stack-name "${stack_name}" \
-    --region "${REGION}" \
-    --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
-    --output table || echo "No outputs"
-
-  echo ""
-}
-
-# Deploy stacks based on account type
-if [ "${ACCOUNT_TYPE}" == "common" ]; then
-  echo "Deploying Common Account Stacks (${ENVIRONMENT} environment)"
-  echo ""
-
-  # Stack 1: Network Stack (if exists)
-  if [ -f "infra/common/cloudformation/stacks/02-network/main.yaml" ]; then
-    deploy_stack \
-      "niigata-kaigo-${ENVIRONMENT}-common-network-stack" \
-      "infra/common/cloudformation/stacks/02-network/main.yaml" \
-      "infra/common/cloudformation/parameters/${ENVIRONMENT}/02-network-stack-params.json" \
-      "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND" || {
-        echo -e "${RED}✗ Network Stack deployment failed${NC}"
-        exit 1
-      }
-  fi
-
-  # Stack 2: Security Monitoring Stack
-  if [ -f "infra/common/cloudformation/stacks/03-security-monitoring/main.yaml" ]; then
-    deploy_stack \
-      "niigata-kaigo-${ENVIRONMENT}-security-monitoring-stack" \
-      "infra/common/cloudformation/stacks/03-security-monitoring/main.yaml" \
-      "infra/common/cloudformation/parameters/${ENVIRONMENT}/03-security-monitoring-stack-params.json" \
-      "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND" || {
-        echo -e "${RED}✗ Security Monitoring Stack deployment failed${NC}"
-        exit 1
-      }
-  fi
-
-elif [ "${ACCOUNT_TYPE}" == "app" ]; then
-  echo "Deploying App Account Stacks (${ENVIRONMENT} environment)"
-  echo ""
-
-  # Stack order based on dependencies (from design document)
-  STACKS=(
-    "03-network"
-    "04-security"
-    "05-database"
-    "06-compute"
-    "07-storage"
-    "08-auth"
-    "09-monitoring"
-  )
-
-  for stack_num in "${STACKS[@]}"; do
-    STACK_DIR="infra/app/cloudformation/stacks/${stack_num}"
-    STACK_NAME="niigata-kaigo-${ENVIRONMENT}-app-${stack_num##*-}-stack"
-    TEMPLATE="${STACK_DIR}/main.yaml"
-    PARAMETERS="infra/app/cloudformation/parameters/${ENVIRONMENT}/${stack_num}-stack-params.json"
-
-    if [ -f "${TEMPLATE}" ] && [ -f "${PARAMETERS}" ]; then
-      deploy_stack \
-        "${STACK_NAME}" \
-        "${TEMPLATE}" \
-        "${PARAMETERS}" \
-        "CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND" || {
-          echo -e "${RED}✗ Stack deployment failed: ${STACK_NAME}${NC}"
-          echo ""
-          echo "Rollback Options:"
-          echo "1. Fix the issue and re-run this script"
-          echo "2. Delete failed stack: ./scripts/delete-stack.sh ${STACK_NAME} ${ENVIRONMENT}"
-          echo "3. Check CloudFormation console for error details"
-          exit 1
-        }
-    else
-      echo -e "${YELLOW}⚠️  Skipping ${stack_num}: template or parameters not found${NC}"
-    fi
-  done
+if [[ ! -f "./scripts/upload-templates.sh" ]]; then
+  echo "❌ Error: upload-templates.sh not found"
+  exit 1
 fi
 
+./scripts/upload-templates.sh ${ENVIRONMENT}
+
 echo ""
-echo "========================================"
-echo -e "${GREEN}✓ All stacks deployed successfully!${NC}"
-echo "========================================"
-echo "Account Type: ${ACCOUNT_TYPE}"
-echo "Environment:  ${ENVIRONMENT}"
-echo "Completed At: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "✅ Phase 1 Complete: Templates uploaded"
+echo ""
+
+# =============================================================================
+# Phase 2: Common Account Network Stack
+# =============================================================================
+echo "========================================="
+echo "Phase 2: Common Account Network Stack"
+echo "========================================="
+
+COMMON_STACK_NAME="${PROJECT_NAME}-${ENVIRONMENT}-common-network-stack"
+COMMON_TEMPLATE="infra/common/cloudformation/stacks/02-network/main.yaml"
+COMMON_PARAMS="infra/common/cloudformation/parameters/${ENVIRONMENT}.json"
+
+echo "Creating Change Set for Common Network Stack..."
+./scripts/create-changeset.sh \
+  ${COMMON_STACK_NAME} \
+  ${COMMON_TEMPLATE} \
+  ${COMMON_PARAMS} \
+  ${ENVIRONMENT}
+
+echo ""
+
+# Change Set名を取得
+COMMON_CHANGESET_NAME=$(aws cloudformation list-change-sets \
+  --stack-name ${COMMON_STACK_NAME} \
+  --query 'Summaries[0].ChangeSetName' \
+  --output text)
+
+if [[ -z "$COMMON_CHANGESET_NAME" || "$COMMON_CHANGESET_NAME" == "None" ]]; then
+  echo "❌ Error: Failed to create Change Set for Common Network Stack"
+  exit 1
+fi
+
+echo "Change Set created: ${COMMON_CHANGESET_NAME}"
+echo ""
+
+# Change Set内容を表示
+echo "Reviewing Change Set..."
+./scripts/describe-changeset.sh \
+  ${COMMON_STACK_NAME} \
+  ${COMMON_CHANGESET_NAME}
+
+echo ""
+read -p "Execute Common Network Stack Change Set? (yes/no): " CONFIRM_COMMON
+if [[ "$CONFIRM_COMMON" != "yes" ]]; then
+  echo "Deployment cancelled. Change Set remains for manual execution."
+  exit 0
+fi
+
+# Change Setを実行
+echo "Executing Common Network Stack..."
+printf "yes\n" | ./scripts/execute-changeset.sh \
+  ${COMMON_STACK_NAME} \
+  ${COMMON_CHANGESET_NAME}
+
+echo ""
+echo "✅ Phase 2 Complete: Common Network Stack deployed"
+echo ""
+
+# =============================================================================
+# Phase 3: パラメータファイル自動生成
+# =============================================================================
+echo "========================================="
+echo "Phase 3: Auto-Generate App Parameters"
+echo "========================================="
+
+echo "Waiting for Common Stack to complete..."
+aws cloudformation wait stack-update-complete --stack-name ${COMMON_STACK_NAME} || \
+  aws cloudformation wait stack-create-complete --stack-name ${COMMON_STACK_NAME}
+
+echo ""
+echo "Generating App Stack parameters from Common Stack Outputs..."
+./scripts/generate-app-params.sh ${ENVIRONMENT}
+
+echo ""
+echo "✅ Phase 3 Complete: App parameters generated"
+echo ""
+
+# =============================================================================
+# Phase 4: App Account Network Stack
+# =============================================================================
+echo "========================================="
+echo "Phase 4: App Account Network Stack"
+echo "========================================="
+
+APP_STACK_NAME="${PROJECT_NAME}-${ENVIRONMENT}-app-network-stack"
+APP_TEMPLATE="infra/app/cloudformation/stacks/03-network/main.yaml"
+APP_PARAMS="infra/app/cloudformation/parameters/${ENVIRONMENT}/03-network-stack-params.json"
+
+echo "Creating Change Set for App Network Stack..."
+./scripts/create-changeset.sh \
+  ${APP_STACK_NAME} \
+  ${APP_TEMPLATE} \
+  ${APP_PARAMS} \
+  ${ENVIRONMENT}
+
+echo ""
+
+# Change Set名を取得
+APP_CHANGESET_NAME=$(aws cloudformation list-change-sets \
+  --stack-name ${APP_STACK_NAME} \
+  --query 'Summaries[0].ChangeSetName' \
+  --output text)
+
+if [[ -z "$APP_CHANGESET_NAME" || "$APP_CHANGESET_NAME" == "None" ]]; then
+  echo "❌ Error: Failed to create Change Set for App Network Stack"
+  exit 1
+fi
+
+echo "Change Set created: ${APP_CHANGESET_NAME}"
+echo ""
+
+# Change Set内容を表示
+echo "Reviewing Change Set..."
+./scripts/describe-changeset.sh \
+  ${APP_STACK_NAME} \
+  ${APP_CHANGESET_NAME}
+
+echo ""
+read -p "Execute App Network Stack Change Set? (yes/no): " CONFIRM_APP
+if [[ "$CONFIRM_APP" != "yes" ]]; then
+  echo "Deployment cancelled. Change Set remains for manual execution."
+  exit 0
+fi
+
+# Change Setを実行
+echo "Executing App Network Stack..."
+printf "yes\n" | ./scripts/execute-changeset.sh \
+  ${APP_STACK_NAME} \
+  ${APP_CHANGESET_NAME}
+
+echo ""
+echo "✅ Phase 4 Complete: App Network Stack deployed"
+echo ""
+
+# =============================================================================
+# 完了メッセージ
+# =============================================================================
+echo "========================================="
+echo "✅ Full Deployment Complete!"
+echo "========================================="
+echo ""
+echo "Deployed Stacks:"
+echo "  1. ${COMMON_STACK_NAME}"
+echo "  2. ${APP_STACK_NAME}"
+echo ""
+echo "Next Steps:"
+echo "  - Verify resources in AWS Console"
+echo "  - Test connectivity between Common VPC and App VPC"
+echo "  - Deploy Security Stack (KMS, Security Groups)"
+echo "  - Deploy Database Stack (RDS MySQL)"
+echo ""
+echo "To check stack status:"
+echo "  aws cloudformation describe-stacks --stack-name ${COMMON_STACK_NAME}"
+echo "  aws cloudformation describe-stacks --stack-name ${APP_STACK_NAME}"
 echo ""

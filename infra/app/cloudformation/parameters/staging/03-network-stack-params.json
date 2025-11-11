@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "AppVPCCidr",
+    "ParameterValue": "10.101.0.0/16"
+  },
+  {
+    "ParameterKey": "TransitGatewayId",
+    "ParameterValue": "tgw-0b4a71e8a496bd5db"
+  },
+  {
+    "ParameterKey": "TransitGatewayRouteTableId",
+    "ParameterValue": "tgw-rtb-05ca039f877c21e4e"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-staging"
+  }
+]

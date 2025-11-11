@@ -9,15 +9,41 @@
 
 ```
 10_CICD/
-├── README.md                      # 本ファイル（概要）
-├── ブランチ戦略.md                  # Gitブランチ運用方針
-├── IaC戦略.md                      # CloudFormationによるインフラコード管理
-└── GitHub_Actions設計.md           # CI/CDパイプライン設計
+├── README.md                           # 本ファイル（概要）
+├── Multi-Account_CI_CD設計.md          # Multi-Accountデプロイ設計（重要）
+├── ブランチ戦略.md                      # Gitブランチ運用方針
+├── IaC戦略.md                          # CloudFormationによるインフラコード管理
+└── GitHub_Actions設計.md               # CI/CDパイプライン設計
 ```
 
 ---
 
 ## 設計ドキュメント一覧
+
+### 0. [Multi-Account_CI_CD設計.md](./Multi-Account_CI_CD設計.md) ⭐ **重要**
+
+**内容**:
+- Multi-Account構成でのCI/CD課題と解決策
+- CI/CD専用アカウントパターン
+- IAMロール設計（OIDC認証、AssumeRole chain）
+- GitHub Actions OIDC認証フロー
+- デプロイ順序制御（Common Account → App Account）
+- Transit Gateway クロスアカウント共有（AWS RAM）
+- Parameter Storeによるクロスアカウントパラメーター参照
+- セキュリティ要件（GCAS準拠）
+- 実装ロードマップ（Phase 1-6）
+
+**対象読者**:
+- インフラエンジニア（必読）
+- SRE
+- セキュリティ担当者
+
+**前提知識**:
+- AWS Multi-Account戦略
+- IAMロール、Trust Policy
+- CloudFormation基礎
+
+---
 
 ### 1. [ブランチ戦略.md](./ブランチ戦略.md)
 
@@ -81,7 +107,7 @@
 
 ---
 
-## CI/CDフロー全体像
+## CI/CDフロー全体像（Multi-Account対応）
 
 ```mermaid
 graph LR
@@ -95,6 +121,26 @@ graph LR
     H -->|8. 手動承認ゲート| I[GitHub Actions: Deploy Production]
     I -->|9. 本番環境へデプロイ| J[Production環境]
 ```
+
+### Multi-Account認証フロー
+
+```mermaid
+sequenceDiagram
+    participant GA as GitHub Actions
+    participant CICD as CI/CD専用アカウント
+    participant Common as 本番共通系アカウント
+    participant App as 本番アプリ系アカウント
+
+    GA->>CICD: 1. OIDC認証
+    GA->>Common: 2. AssumeRole (Common Account)
+    GA->>Common: 3. Transit Gateway デプロイ
+    GA->>Common: 4. Parameter Store へ保存
+    GA->>App: 5. AssumeRole (App Account)
+    GA->>Common: 6. Parameter Store から取得
+    GA->>App: 7. VPC + TGW Attachment デプロイ
+```
+
+**詳細**: [Multi-Account_CI_CD設計.md](./Multi-Account_CI_CD設計.md)
 
 ---
 
@@ -148,6 +194,7 @@ graph LR
 
 - **OIDC認証**: GitHub ActionsがAWS STSに一時的な認証情報を要求
 - **アクセスキー不要**: IAMユーザーのシークレット不要
+- **Multi-Account対応**: CI/CD専用アカウント → 各環境アカウントへAssumeRole
 
 ### スキャン
 
@@ -202,47 +249,57 @@ graph LR
 
 ## 次のステップ
 
-### 1. GitHub Actionsワークフローの実装
+### 1. Multi-Account CI/CD設計の確認（必須）
+
+**参照**: [Multi-Account_CI_CD設計.md](./Multi-Account_CI_CD設計.md)
+
+**重要項目**:
+- IAMロール設計
+- OIDC認証フロー
+- デプロイ順序制御
+- Transit Gateway クロスアカウント共有
+
+### 2. GitHub Actionsワークフローの実装
 
 ```bash
 # ワークフローファイルの作成
 mkdir -p .github/workflows
 touch .github/workflows/frontend-deploy.yml
 touch .github/workflows/backend-deploy.yml
-touch .github/workflows/infra-deploy.yml
+touch .github/workflows/infra-deploy-multi-account.yml
 ```
 
 **参照**: [GitHub_Actions設計.md](./GitHub_Actions設計.md)
 
-### 2. AWS OIDC プロバイダーの設定
+### 3. AWS OIDC プロバイダーの設定
 
 ```bash
-# GitHub OIDC プロバイダーを作成
+# GitHub OIDC プロバイダーを作成（CI/CD専用アカウント）
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
   --client-id-list sts.amazonaws.com \
   --thumbprint-list <thumbprint>
 
-# IAMロール作成（GitHubActionsDeployRole）
+# IAMロール作成（GitHubActionsOIDCRole）
 ```
 
-**参照**: [GitHub_Actions設計.md - OIDC認証](./GitHub_Actions設計.md#aws認証-oidcopenid-connect)
+**参照**: [Multi-Account_CI_CD設計.md - IAMロール設計](./Multi-Account_CI_CD設計.md#iamロール設計)
 
-### 3. GitHub Secrets の設定
+### 4. GitHub Secrets の設定
 
 ```
 Settings → Secrets and variables → Actions → New repository secret
 ```
 
 **必須シークレット**:
-- `AWS_ROLE_STAGING`
-- `AWS_ROLE_PROD`
-- `AWS_ROLE_SHARED`
-- `STAGING_API_URL`
-- `PROD_API_URL`
+- `AWS_ROLE_CICD` - CI/CD専用アカウントのロールARN
+- `AWS_ROLE_PROD_COMMON` - 本番共通系アカウントのロールARN
+- `AWS_ROLE_PROD_APP` - 本番アプリ系アカウントのロールARN
+- `AWS_ROLE_STAG_COMMON` - ステージング共通系アカウントのロールARN
+- `AWS_ROLE_STAG_APP` - ステージングアプリ系アカウントのロールARN
 - その他（[GitHub_Actions設計.md](./GitHub_Actions設計.md#github-secrets-設定) 参照）
 
-### 4. GitHub Environments の設定
+### 5. GitHub Environments の設定
 
 ```
 Settings → Environments → New environment
@@ -254,7 +311,7 @@ Settings → Environments → New environment
 - `production` - 手動承認必須
 - `production-infra` - 手動承認必須
 
-### 5. ブランチ保護ルールの設定
+### 6. ブランチ保護ルールの設定
 
 ```
 Settings → Branches → Add branch protection rule
@@ -294,19 +351,31 @@ Settings → Branches → Add branch protection rule
 **対処**:
 - IAMロールの信頼ポリシーを確認
 - リポジトリ名が正しいか確認
+- OIDC Providerが正しく設定されているか確認
+
+### クロスアカウントAssumeRoleエラー
+
+**原因**: Trust PolicyまたはExternal IDが正しくない
+
+**対処**:
+- Trust Policyを確認（[Multi-Account_CI_CD設計.md](./Multi-Account_CI_CD設計.md#iamロール設計) 参照）
+- External IDが一致しているか確認
+- CloudTrailでAssumeRole操作を確認
 
 ---
 
 ## 参照ドキュメント
 
+- **[Multi-Account_CI_CD設計.md](./Multi-Account_CI_CD設計.md)** ⭐ 必読
 - [ブランチ戦略.md](./ブランチ戦略.md)
 - [IaC戦略.md](./IaC戦略.md)
 - [GitHub_Actions設計.md](./GitHub_Actions設計.md)
-- `.claude/docs/40_standards/45_cloudformation.md` - CloudFormation標準
+- `.claude/docs/40_standards/42_infra/iac/cloudformation.md` - CloudFormation標準
 - `.claude/docs/40_standards/46_git.md` - Git運用標準
 
 ---
 
 **作成日**: 2025-11-07
+**更新日**: 2025-11-12（Multi-Account CI/CD設計追加）
 **作成者**: Claude (PM)
 **レビュー状態**: Draft
