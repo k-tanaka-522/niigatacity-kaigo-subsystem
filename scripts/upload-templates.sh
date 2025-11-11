@@ -121,4 +121,15 @@ info "=================================================="
 
 aws s3 ls "s3://$BUCKET_NAME/" --recursive --human-readable
 
+# Step 5: Display S3 URLs
+info "=================================================="
+info "S3 URLs for CloudFormation TemplateURL:"
+info "=================================================="
+info "Common Account:"
+info "  https://$BUCKET_NAME.s3.$REGION.amazonaws.com/common/templates/"
+info ""
+info "App Account:"
+info "  https://$BUCKET_NAME.s3.$REGION.amazonaws.com/app/templates/"
+info "=================================================="
+
 success "All templates uploaded successfully!"

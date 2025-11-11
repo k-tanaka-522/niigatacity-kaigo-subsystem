@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Monitoring Stack - CloudWatch Alarms and AWS Backup'
+Description: 'Monitoring Stack - SNS Topics, Log Groups, VPC Flow Logs, CloudWatch Alarms, AWS Backup'
 
 Parameters:
   EnvironmentName:
@@ -14,12 +14,37 @@ Parameters:
     Type: String
     Description: Project name for resource naming
 
-  # CloudWatch Alarms Parameters
-  SNSTopicArn:
+  # SNS Topics Parameters
+  AlertEmailAddress:
     Type: String
-    Description: ARN of SNS topic for alarm notifications
-    Default: ""
+    Description: Email address for application alerts (Critical, Warning, Info)
+    Default: infra-alerts@example.com
 
+  SlackWebhookUrl:
+    Type: String
+    Description: Slack Webhook URL for application alerts
+    Default: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+    NoEcho: true
+
+  # Log Groups Parameters
+  LogRetentionDays:
+    Type: Number
+    Description: Log retention days for application logs
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  # VPC Flow Logs Parameters
+  VPCId:
+    Type: String
+    Description: VPC ID for Flow Logs
+
+  FlowLogsRetentionDays:
+    Type: Number
+    Description: VPC Flow Logs retention days for GCAS requirement
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  # CloudWatch Alarms Parameters
   LoadBalancerFullName:
     Type: String
     Description: Full name of the ALB
@@ -122,16 +147,78 @@ Parameters:
 
 Resources:
   # ==============================================================================
+  # SNS Topics Stack (Foundation)
+  # ==============================================================================
+  SNSTopicsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/app-sns-topics.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        AlertEmailAddress: !Ref AlertEmailAddress
+        SlackWebhookUrl: !Ref SlackWebhookUrl
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-sns-topics-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # Log Groups Stack (Foundation)
+  # ==============================================================================
+  LogGroupsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/app-log-groups.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        LogRetentionDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-log-groups-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ==============================================================================
+  # VPC Flow Logs Stack (GCAS Requirement)
+  # ==============================================================================
+  VPCFlowLogsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/vpc-flow-logs.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        VPCId: !Ref VPCId
+        FlowLogsRetentionDays: !Ref FlowLogsRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc-flow-logs-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Compliance
+          Value: GCAS
+
+  # ==============================================================================
   # CloudWatch Alarms Stack
   # ==============================================================================
   CloudWatchAlarmsStack:
     Type: AWS::CloudFormation::Stack
+    DependsOn: SNSTopicsStack
     Properties:
       TemplateURL: !Sub 'https://${TemplateBucketName}.s3.${AWS::Region}.amazonaws.com/app/templates/monitoring/cloudwatch-alarms.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         ProjectName: !Ref ProjectName
-        SNSTopicArn: !Ref SNSTopicArn
+        SNSTopicArn: !GetAtt SNSTopicsStack.Outputs.CriticalAlertTopicArn
         LoadBalancerFullName: !Ref LoadBalancerFullName
         TargetGroupFullName: !Ref TargetGroupFullName
         ECSClusterName: !Ref ECSClusterName
@@ -178,12 +265,56 @@ Resources:
           Value: !Ref ProjectName
 
 Outputs:
-  # CloudWatch Outputs
-  SNSTopicArn:
-    Description: ARN of the SNS topic for alarms
-    Value: !GetAtt CloudWatchAlarmsStack.Outputs.SNSTopicArn
+  # SNS Topics Outputs
+  CriticalAlertTopicArn:
+    Description: Critical Alert SNS Topic ARN
+    Value: !GetAtt SNSTopicsStack.Outputs.CriticalAlertTopicArn
     Export:
-      Name: !Sub '${ProjectName}-${EnvironmentName}-alarm-sns-topic-arn'
+      Name: !Sub '${ProjectName}-${EnvironmentName}-CriticalAlertTopicArn'
+
+  WarningAlertTopicArn:
+    Description: Warning Alert SNS Topic ARN
+    Value: !GetAtt SNSTopicsStack.Outputs.WarningAlertTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WarningAlertTopicArn'
+
+  InfoAlertTopicArn:
+    Description: Info Alert SNS Topic ARN
+    Value: !GetAtt SNSTopicsStack.Outputs.InfoAlertTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-InfoAlertTopicArn'
+
+  # Log Groups Outputs
+  ProviderBackendLogGroupArn:
+    Description: Provider Backend Log Group ARN
+    Value: !GetAtt LogGroupsStack.Outputs.ProviderBackendLogGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ProviderBackendLogGroupArn'
+
+  StaffBackendLogGroupArn:
+    Description: Staff Backend Log Group ARN
+    Value: !GetAtt LogGroupsStack.Outputs.StaffBackendLogGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-StaffBackendLogGroupArn'
+
+  BatchLogGroupArn:
+    Description: Batch Log Group ARN
+    Value: !GetAtt LogGroupsStack.Outputs.BatchLogGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-BatchLogGroupArn'
+
+  # VPC Flow Logs Outputs
+  VPCFlowLogsLogGroupArn:
+    Description: VPC Flow Logs CloudWatch Logs Group ARN
+    Value: !GetAtt VPCFlowLogsStack.Outputs.VPCFlowLogsLogGroupArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogsLogGroupArn'
+
+  VPCFlowLogId:
+    Description: VPC Flow Log ID
+    Value: !GetAtt VPCFlowLogsStack.Outputs.VPCFlowLogId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogId'
 
   # Backup Outputs
   BackupVaultName:

@@ -1,0 +1,180 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'VPC Flow Logs - App Account Network Monitoring (GCAS Requirement)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (dev, staging, production)'
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Default: dev
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  VPCId:
+    Type: String
+    Description: 'VPC ID for Flow Logs'
+
+  FlowLogsRetentionDays:
+    Type: Number
+    Description: 'VPC Flow Logs retention days'
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+Resources:
+  # ==========================================================================
+  # CloudWatch Logs Group for VPC Flow Logs
+  # ==========================================================================
+  VPCFlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/vpc/flowlogs/${ProjectName}-${EnvironmentName}-app-vpc'
+      RetentionInDays: !Ref FlowLogsRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc-flow-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: VPCType
+          Value: app
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # IAM Role for VPC Flow Logs
+  # ==========================================================================
+  VPCFlowLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-vpc-flow-logs-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource: !GetAtt VPCFlowLogsLogGroup.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-vpc-flow-logs-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # VPC Flow Logs (ALL Traffic)
+  # ==========================================================================
+  VPCFlowLog:
+    Type: AWS::EC2::FlowLog
+    DependsOn:
+      - VPCFlowLogsLogGroup
+      - VPCFlowLogsRole
+    Properties:
+      ResourceType: VPC
+      ResourceIds:
+        - !Ref VPCId
+      TrafficType: ALL  # ACCEPT + REJECT
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref VPCFlowLogsLogGroup
+      DeliverLogsPermissionArn: !GetAtt VPCFlowLogsRole.Arn
+      LogFormat: '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}'
+      MaxAggregationInterval: 60  # 1 minute (faster detection)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-app-vpc-flow-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: VPCType
+          Value: app
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # Metric Filters for Security Events
+  # ==========================================================================
+  RejectedTrafficMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref VPCFlowLogsLogGroup
+      FilterPattern: '[version, account, eni, source, destination, srcport, destport, protocol, packets, bytes, windowstart, windowend, action="REJECT", flowlogstatus]'
+      MetricTransformations:
+        - MetricName: RejectedTraffic
+          MetricNamespace: VPCFlowLogs
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SSHTrafficMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref VPCFlowLogsLogGroup
+      FilterPattern: '[version, account, eni, source, destination, srcport, destport="22", protocol="6", packets, bytes, windowstart, windowend, action, flowlogstatus]'
+      MetricTransformations:
+        - MetricName: SSHTraffic
+          MetricNamespace: VPCFlowLogs
+          MetricValue: '1'
+          DefaultValue: 0
+
+  RDPTrafficMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref VPCFlowLogsLogGroup
+      FilterPattern: '[version, account, eni, source, destination, srcport, destport="3389", protocol="6", packets, bytes, windowstart, windowend, action, flowlogstatus]'
+      MetricTransformations:
+        - MetricName: RDPTraffic
+          MetricNamespace: VPCFlowLogs
+          MetricValue: '1'
+          DefaultValue: 0
+
+Outputs:
+  VPCFlowLogsLogGroupArn:
+    Description: 'VPC Flow Logs CloudWatch Logs Group ARN'
+    Value: !GetAtt VPCFlowLogsLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogsLogGroupArn'
+
+  VPCFlowLogsLogGroupName:
+    Description: 'VPC Flow Logs CloudWatch Logs Group Name'
+    Value: !Ref VPCFlowLogsLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogsLogGroupName'
+
+  VPCFlowLogId:
+    Description: 'VPC Flow Log ID'
+    Value: !Ref VPCFlowLog
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogId'
+
+  VPCFlowLogsRoleArn:
+    Description: 'VPC Flow Logs IAM Role ARN'
+    Value: !GetAtt VPCFlowLogsRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-VPCFlowLogsRoleArn'

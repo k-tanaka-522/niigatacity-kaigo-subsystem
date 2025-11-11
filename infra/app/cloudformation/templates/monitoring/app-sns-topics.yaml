@@ -1,0 +1,195 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application SNS Topics - App Account Application Alerts'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (dev, staging, production)'
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Default: dev
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  AlertEmailAddress:
+    Type: String
+    Description: 'Email address for application alerts (Critical, Warning, Info)'
+    Default: infra-alerts@example.com
+
+  SlackWebhookUrl:
+    Type: String
+    Description: 'Slack Webhook URL for application alerts'
+    Default: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+    NoEcho: true
+
+Resources:
+  # ==========================================================================
+  # Critical Alert Topic (Application-level)
+  # ==========================================================================
+  CriticalAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-critical-alerts'
+      DisplayName: !Sub '[${EnvironmentName}] Critical Alerts'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-critical-alerts'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AlertType
+          Value: Critical
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  CriticalAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref CriticalAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref CriticalAlertTopic
+
+  CriticalAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref CriticalAlertTopic
+      Endpoint: !Ref AlertEmailAddress
+
+  # ==========================================================================
+  # Warning Alert Topic (Application-level)
+  # ==========================================================================
+  WarningAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-warning-alerts'
+      DisplayName: !Sub '[${EnvironmentName}] Warning Alerts'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-warning-alerts'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AlertType
+          Value: Warning
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  WarningAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref WarningAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref WarningAlertTopic
+
+  WarningAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref WarningAlertTopic
+      Endpoint: !Ref AlertEmailAddress
+
+  # ==========================================================================
+  # Info Alert Topic (Application-level)
+  # ==========================================================================
+  InfoAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-info-alerts'
+      DisplayName: !Sub '[${EnvironmentName}] Info Alerts'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-info-alerts'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AlertType
+          Value: Info
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  InfoAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref InfoAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref InfoAlertTopic
+
+  InfoAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref InfoAlertTopic
+      Endpoint: !Ref AlertEmailAddress
+
+Outputs:
+  CriticalAlertTopicArn:
+    Description: 'Critical Alert SNS Topic ARN'
+    Value: !Ref CriticalAlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-CriticalAlertTopicArn'
+
+  CriticalAlertTopicName:
+    Description: 'Critical Alert SNS Topic Name'
+    Value: !GetAtt CriticalAlertTopic.TopicName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-CriticalAlertTopicName'
+
+  WarningAlertTopicArn:
+    Description: 'Warning Alert SNS Topic ARN'
+    Value: !Ref WarningAlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WarningAlertTopicArn'
+
+  WarningAlertTopicName:
+    Description: 'Warning Alert SNS Topic Name'
+    Value: !GetAtt WarningAlertTopic.TopicName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WarningAlertTopicName'
+
+  InfoAlertTopicArn:
+    Description: 'Info Alert SNS Topic ARN'
+    Value: !Ref InfoAlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-InfoAlertTopicArn'
+
+  InfoAlertTopicName:
+    Description: 'Info Alert SNS Topic Name'
+    Value: !GetAtt InfoAlertTopic.TopicName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-InfoAlertTopicName'

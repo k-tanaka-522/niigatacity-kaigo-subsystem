@@ -1,0 +1,234 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'GuardDuty & Security Hub - Organization-wide Threat Detection (Common Account)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  SecurityAlertTopicArn:
+    Type: String
+    Description: 'SNS Topic ARN for security alerts'
+
+  EnableSecurityHub:
+    Type: String
+    Description: 'Enable Security Hub compliance checking'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  EnableSecurityHubCondition: !Equals [!Ref EnableSecurityHub, 'true']
+
+Resources:
+  # ==========================================================================
+  # GuardDuty Detector (Organization-wide)
+  # ==========================================================================
+  GuardDutyDetector:
+    Type: AWS::GuardDuty::Detector
+    Properties:
+      Enable: true
+      FindingPublishingFrequency: FIFTEEN_MINUTES
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-guardduty-detector'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # EventBridge Rule for GuardDuty Findings
+  # ==========================================================================
+  GuardDutyEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-guardduty-findings'
+      Description: 'Capture GuardDuty findings and send to SNS'
+      EventPattern:
+        source:
+          - aws.guardduty
+        detail-type:
+          - GuardDuty Finding
+        detail:
+          severity:
+            - numeric:
+                - '>='
+                - 4.0  # Medium severity and above
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityAlertTopicArn
+          Id: GuardDutyToSNS
+          InputTransformer:
+            InputPathsMap:
+              severity: $.detail.severity
+              type: $.detail.type
+              region: $.detail.region
+              accountId: $.detail.accountId
+              finding: $.detail.description
+            InputTemplate: |
+              {
+                "AlarmName": "GuardDuty Finding Detected",
+                "AlarmDescription": "GuardDuty has detected a security threat",
+                "AWSAccountId": "<accountId>",
+                "Region": "<region>",
+                "FindingType": "<type>",
+                "Severity": "<severity>",
+                "Description": "<finding>",
+                "NewStateValue": "ALARM",
+                "NewStateReason": "GuardDuty Finding"
+              }
+
+  # ==========================================================================
+  # Security Hub (Organization-wide Compliance Management)
+  # ==========================================================================
+  SecurityHub:
+    Type: AWS::SecurityHub::Hub
+    Condition: EnableSecurityHubCondition
+    Properties:
+      Tags:
+        Name: !Sub '${ProjectName}-${EnvironmentName}-security-hub'
+        Environment: !Ref EnvironmentName
+        Project: !Ref ProjectName
+        ManagedBy: CloudFormation
+
+  # Enable CIS AWS Foundations Benchmark
+  CISStandard:
+    Type: AWS::SecurityHub::Standard
+    Condition: EnableSecurityHubCondition
+    DependsOn: SecurityHub
+    Properties:
+      StandardsArn: !Sub 'arn:aws:securityhub:${AWS::Region}::standards/cis-aws-foundations-benchmark/v/1.4.0'
+
+  # Enable AWS Foundational Security Best Practices
+  AWSFoundationalStandard:
+    Type: AWS::SecurityHub::Standard
+    Condition: EnableSecurityHubCondition
+    DependsOn: SecurityHub
+    Properties:
+      StandardsArn: !Sub 'arn:aws:securityhub:${AWS::Region}::standards/aws-foundational-security-best-practices/v/1.0.0'
+
+  # ==========================================================================
+  # EventBridge Rule for Security Hub Findings
+  # ==========================================================================
+  SecurityHubEventRule:
+    Type: AWS::Events::Rule
+    Condition: EnableSecurityHubCondition
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-securityhub-findings'
+      Description: 'Capture Security Hub findings and send to SNS'
+      EventPattern:
+        source:
+          - aws.securityhub
+        detail-type:
+          - Security Hub Findings - Imported
+        detail:
+          findings:
+            Severity:
+              Label:
+                - CRITICAL
+                - HIGH
+      State: ENABLED
+      Targets:
+        - Arn: !Ref SecurityAlertTopicArn
+          Id: SecurityHubToSNS
+          InputTransformer:
+            InputPathsMap:
+              severity: $.detail.findings[0].Severity.Label
+              title: $.detail.findings[0].Title
+              description: $.detail.findings[0].Description
+              remediation: $.detail.findings[0].Remediation.Recommendation.Text
+            InputTemplate: |
+              {
+                "AlarmName": "Security Hub Finding Detected",
+                "AlarmDescription": "Security Hub has detected a compliance issue",
+                "FindingTitle": "<title>",
+                "Severity": "<severity>",
+                "Description": "<description>",
+                "Remediation": "<remediation>",
+                "NewStateValue": "ALARM",
+                "NewStateReason": "Security Hub Compliance Issue"
+              }
+
+  # ==========================================================================
+  # CloudWatch Alarms for GuardDuty
+  # ==========================================================================
+  HighSeverityFindingsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-guardduty-high-severity'
+      AlarmDescription: 'Alert on GuardDuty high severity findings'
+      MetricName: HighSeverityFindings
+      Namespace: GuardDutyMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopicArn
+      TreatMissingData: notBreaching
+
+  # ==========================================================================
+  # CloudWatch Log Metric Filter for GuardDuty
+  # ==========================================================================
+  GuardDutyMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub '/aws/events/${ProjectName}-${EnvironmentName}-guardduty'
+      FilterPattern: '{ $.detail.severity >= 4.0 }'
+      MetricTransformations:
+        - MetricName: HighSeverityFindings
+          MetricNamespace: GuardDutyMetrics
+          MetricValue: '1'
+          DefaultValue: 0
+
+  # ==========================================================================
+  # CloudWatch Log Group for GuardDuty Events
+  # ==========================================================================
+  GuardDutyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/events/${ProjectName}-${EnvironmentName}-guardduty'
+      RetentionInDays: 365
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-guardduty-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  GuardDutyDetectorId:
+    Description: 'GuardDuty Detector ID'
+    Value: !Ref GuardDutyDetector
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-GuardDutyDetectorId'
+
+  SecurityHubArn:
+    Condition: EnableSecurityHubCondition
+    Description: 'Security Hub ARN'
+    Value: !GetAtt SecurityHub.Id
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-SecurityHubArn'
+
+  GuardDutyLogGroupName:
+    Description: 'GuardDuty CloudWatch Logs Group Name'
+    Value: !Ref GuardDutyLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-GuardDutyLogGroupName'

@@ -1,7 +1,7 @@
 [
   {
     "ParameterKey": "EnvironmentName",
-    "ParameterValue": "dev"
+    "ParameterValue": "staging"
   },
   {
     "ParameterKey": "ProjectName",
@@ -9,7 +9,7 @@
   },
   {
     "ParameterKey": "AlertEmailAddress",
-    "ParameterValue": "infra-alerts-dev@example.com"
+    "ParameterValue": "infra-alerts-staging@example.com"
   },
   {
     "ParameterKey": "SlackWebhookUrl",
@@ -89,7 +89,7 @@
   },
   {
     "ParameterKey": "DeleteAfterDays",
-    "ParameterValue": "7"
+    "ParameterValue": "30"
   },
   {
     "ParameterKey": "BackupWindowMinutes",
@@ -105,6 +105,6 @@
   },
   {
     "ParameterKey": "TemplateBucketName",
-    "ParameterValue": "niigata-kaigo-cfn-templates-dev"
+    "ParameterValue": "niigata-kaigo-cfn-templates-staging"
   }
 ]

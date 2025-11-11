@@ -1,0 +1,268 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudTrail - Organization-wide API Audit Logging (Common Account)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  AuditLogsBucketName:
+    Type: String
+    Description: 'S3 bucket name for CloudTrail logs'
+
+  SecurityAlertTopicArn:
+    Type: String
+    Description: 'SNS Topic ARN for security alerts'
+
+  EnableDataEvents:
+    Type: String
+    Description: 'Enable data events (S3 object-level, Lambda execution)'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  EnableDataEventsCondition: !Equals [!Ref EnableDataEvents, 'true']
+
+Resources:
+  # ==========================================================================
+  # CloudWatch Logs for CloudTrail
+  # ==========================================================================
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/cloudtrail/${ProjectName}-${EnvironmentName}'
+      RetentionInDays: 2555  # 7 years (GCAS requirement)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudtrail-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  CloudTrailLogGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-cloudtrail-cw-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudtrail-cw-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # CloudTrail (Organization-wide)
+  # ==========================================================================
+  OrganizationTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn:
+      - CloudTrailLogGroup
+      - CloudTrailLogGroupRole
+    Properties:
+      TrailName: !Sub '${ProjectName}-${EnvironmentName}-organization-trail'
+      S3BucketName: !Ref AuditLogsBucketName
+      IsOrganizationTrail: true  # Organization-wide logging
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      EnableLogFileValidation: true  # Log file integrity validation
+      CloudWatchLogsLogGroupArn: !GetAtt CloudTrailLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailLogGroupRole.Arn
+      SnsTopicName: !Select [5, !Split [':', !Ref SecurityAlertTopicArn]]
+      EventSelectors:
+        # Management Events (Always enabled)
+        - IncludeManagementEvents: true
+          ReadWriteType: All
+          DataResources: []
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-organization-trail'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # CloudTrail Data Events (S3 Object-level + Lambda Execution)
+  # ==========================================================================
+  DataEventsTrail:
+    Type: AWS::CloudTrail::Trail
+    Condition: EnableDataEventsCondition
+    DependsOn:
+      - CloudTrailLogGroup
+      - CloudTrailLogGroupRole
+    Properties:
+      TrailName: !Sub '${ProjectName}-${EnvironmentName}-data-events-trail'
+      S3BucketName: !Ref AuditLogsBucketName
+      IsOrganizationTrail: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: false  # Avoid duplicate global events
+      IsLogging: true
+      EnableLogFileValidation: true
+      CloudWatchLogsLogGroupArn: !GetAtt CloudTrailLogGroup.Arn
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailLogGroupRole.Arn
+      EventSelectors:
+        # S3 Data Events (Object-level operations)
+        - IncludeManagementEvents: false
+          ReadWriteType: All
+          DataResources:
+            - Type: AWS::S3::Object
+              Values:
+                - !Sub 'arn:aws:s3:::${ProjectName}-${EnvironmentName}-audit-logs/*'
+                - !Sub 'arn:aws:s3:::${ProjectName}-${EnvironmentName}-documents/*'
+        # Lambda Data Events (Function execution)
+        - IncludeManagementEvents: false
+          ReadWriteType: All
+          DataResources:
+            - Type: AWS::Lambda::Function
+              Values:
+                - 'arn:aws:lambda:*:*:function/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-data-events-trail'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # CloudWatch Alarms for Security Events
+  # ==========================================================================
+  UnauthorizedAPICallsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-unauthorized-api-calls'
+      AlarmDescription: 'Alert on unauthorized API calls'
+      MetricName: UnauthorizedAPICallsEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopicArn
+      TreatMissingData: notBreaching
+
+  RootAccountUsageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-root-account-usage'
+      AlarmDescription: 'Alert on root account usage'
+      MetricName: RootAccountUsageEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopicArn
+      TreatMissingData: notBreaching
+
+  IAMPolicyChangesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${EnvironmentName}-iam-policy-changes'
+      AlarmDescription: 'Alert on IAM policy changes'
+      MetricName: IAMPolicyChangesEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopicArn
+      TreatMissingData: notBreaching
+
+  # ==========================================================================
+  # Metric Filters for CloudTrail Logs
+  # ==========================================================================
+  UnauthorizedAPICallsMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.errorCode = "*UnauthorizedOperation") || ($.errorCode = "AccessDenied*") }'
+      MetricTransformations:
+        - MetricName: UnauthorizedAPICallsEventCount
+          MetricNamespace: CloudTrailMetrics
+          MetricValue: '1'
+          DefaultValue: 0
+
+  RootAccountUsageMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ $.userIdentity.type = "Root" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != "AwsServiceEvent" }'
+      MetricTransformations:
+        - MetricName: RootAccountUsageEventCount
+          MetricNamespace: CloudTrailMetrics
+          MetricValue: '1'
+          DefaultValue: 0
+
+  IAMPolicyChangesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.eventName = DeleteGroupPolicy) || ($.eventName = DeleteRolePolicy) || ($.eventName = DeleteUserPolicy) || ($.eventName = PutGroupPolicy) || ($.eventName = PutRolePolicy) || ($.eventName = PutUserPolicy) || ($.eventName = CreatePolicy) || ($.eventName = DeletePolicy) || ($.eventName = CreatePolicyVersion) || ($.eventName = DeletePolicyVersion) || ($.eventName = AttachRolePolicy) || ($.eventName = DetachRolePolicy) || ($.eventName = AttachUserPolicy) || ($.eventName = DetachUserPolicy) || ($.eventName = AttachGroupPolicy) || ($.eventName = DetachGroupPolicy) }'
+      MetricTransformations:
+        - MetricName: IAMPolicyChangesEventCount
+          MetricNamespace: CloudTrailMetrics
+          MetricValue: '1'
+          DefaultValue: 0
+
+Outputs:
+  OrganizationTrailArn:
+    Description: 'Organization CloudTrail ARN'
+    Value: !GetAtt OrganizationTrail.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-OrganizationTrailArn'
+
+  CloudTrailLogGroupArn:
+    Description: 'CloudTrail CloudWatch Logs Group ARN'
+    Value: !GetAtt CloudTrailLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-CloudTrailLogGroupArn'
+
+  CloudTrailLogGroupName:
+    Description: 'CloudTrail CloudWatch Logs Group Name'
+    Value: !Ref CloudTrailLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-CloudTrailLogGroupName'

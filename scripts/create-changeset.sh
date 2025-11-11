@@ -59,6 +59,28 @@ fi
 # AWS リージョン設定
 AWS_REGION=${AWS_REGION:-ap-northeast-1}
 
+# 環境ごとのAWS Profileを設定
+get_aws_profile() {
+  local environment=$1
+  case "${environment}" in
+    production)
+      echo "niigata-kaigo-prod"
+      ;;
+    staging)
+      echo "niigata-kaigo-stg"
+      ;;
+    dev)
+      echo "default"
+      ;;
+    *)
+      echo "default"
+      ;;
+  esac
+}
+
+AWS_PROFILE=$(get_aws_profile "${ENVIRONMENT}")
+export AWS_PROFILE
+
 echo "========================================"
 echo "CloudFormation Change Set 作成"
 echo "========================================"
@@ -66,6 +88,8 @@ echo "Stack: ${STACK_NAME}"
 echo "Template: ${TEMPLATE_FILE}"
 echo "Parameters: ${PARAMETERS_FILE}"
 echo "Environment: ${ENVIRONMENT}"
+echo "AWS Profile: ${AWS_PROFILE}"
+echo "Account ID: $(aws sts get-caller-identity --query Account --output text)"
 echo "Region: ${AWS_REGION}"
 echo "Change Set: ${CHANGESET_NAME}"
 echo ""

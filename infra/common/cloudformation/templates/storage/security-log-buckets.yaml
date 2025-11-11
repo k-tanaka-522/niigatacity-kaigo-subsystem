@@ -1,0 +1,368 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security Log Buckets - CloudTrail, AWS Config, WAF Logs (Common Account - Organization-wide)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  CloudTrailRetentionDays:
+    Type: Number
+    Description: 'CloudTrail log retention days (GCAS requirement: 7 years = 2555 days)'
+    Default: 2555
+    MinValue: 2555
+
+Resources:
+  # ==========================================================================
+  # CloudTrail Audit Logs Bucket (Organization-wide, 7-year retention)
+  # ==========================================================================
+  AuditLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-audit-logs'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+              - TransitionInDays: 365
+                StorageClass: DEEP_ARCHIVE
+            ExpirationInDays: !Ref CloudTrailRetentionDays
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: audit-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-audit-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: CloudTrail-Audit-Logs
+        - Key: Compliance
+          Value: GCAS
+        - Key: Retention
+          Value: 7-years
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  AuditLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # CloudTrail Write Permission
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt AuditLogsBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${AuditLogsBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          # Deny Insecure Transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt AuditLogsBucket.Arn
+              - !Sub '${AuditLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==========================================================================
+  # AWS Config Logs Bucket (Organization-wide, 7-year retention)
+  # ==========================================================================
+  ConfigLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-config-logs'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+              - TransitionInDays: 365
+                StorageClass: DEEP_ARCHIVE
+            ExpirationInDays: !Ref CloudTrailRetentionDays
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: config-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-config-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: AWS-Config-Logs
+        - Key: Compliance
+          Value: GCAS
+        - Key: Retention
+          Value: 7-years
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  ConfigLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ConfigLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # AWS Config Write Permission
+          - Sid: AWSConfigBucketPermissionsCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt ConfigLogsBucket.Arn
+          - Sid: AWSConfigBucketExistenceCheck
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:ListBucket
+            Resource: !GetAtt ConfigLogsBucket.Arn
+          - Sid: AWSConfigWrite
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${ConfigLogsBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          # Deny Insecure Transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt ConfigLogsBucket.Arn
+              - !Sub '${ConfigLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==========================================================================
+  # WAF Logs Bucket (90-day retention)
+  # ==========================================================================
+  WAFLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'aws-waf-logs-${ProjectName}-${EnvironmentName}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter90Days
+            Status: Enabled
+            ExpirationInDays: 90
+      LoggingConfiguration:
+        DestinationBucketName: !Ref AccessLogsBucket
+        LogFilePrefix: waf-logs/
+      Tags:
+        - Key: Name
+          Value: !Sub 'aws-waf-logs-${ProjectName}-${EnvironmentName}'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: WAF-Logs
+        - Key: Retention
+          Value: 90-days
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  WAFLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WAFLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # WAF Write Permission
+          - Sid: AWSLogDeliveryAclCheck
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt WAFLogsBucket.Arn
+          - Sid: AWSLogDeliveryWrite
+            Effect: Allow
+            Principal:
+              Service: delivery.logs.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${WAFLogsBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+          # Deny Insecure Transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt WAFLogsBucket.Arn
+              - !Sub '${WAFLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  # ==========================================================================
+  # Access Logs Bucket (S3 server access logs for audit trail)
+  # ==========================================================================
+  AccessLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-${EnvironmentName}-s3-access-logs'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAfter365Days
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-s3-access-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: S3-Access-Logs
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  AccessLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # S3 Log Delivery Permission
+          - Sid: S3ServerAccessLogsPolicy
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${AccessLogsBucket.Arn}/*'
+          # Deny Insecure Transport
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt AccessLogsBucket.Arn
+              - !Sub '${AccessLogsBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+Outputs:
+  AuditLogsBucketName:
+    Description: 'CloudTrail Audit Logs S3 Bucket Name'
+    Value: !Ref AuditLogsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-AuditLogsBucketName'
+
+  AuditLogsBucketArn:
+    Description: 'CloudTrail Audit Logs S3 Bucket ARN'
+    Value: !GetAtt AuditLogsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-AuditLogsBucketArn'
+
+  ConfigLogsBucketName:
+    Description: 'AWS Config Logs S3 Bucket Name'
+    Value: !Ref ConfigLogsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigLogsBucketName'
+
+  ConfigLogsBucketArn:
+    Description: 'AWS Config Logs S3 Bucket ARN'
+    Value: !GetAtt ConfigLogsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigLogsBucketArn'
+
+  WAFLogsBucketName:
+    Description: 'WAF Logs S3 Bucket Name'
+    Value: !Ref WAFLogsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WAFLogsBucketName'
+
+  WAFLogsBucketArn:
+    Description: 'WAF Logs S3 Bucket ARN'
+    Value: !GetAtt WAFLogsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WAFLogsBucketArn'
+
+  AccessLogsBucketName:
+    Description: 'S3 Access Logs Bucket Name'
+    Value: !Ref AccessLogsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-AccessLogsBucketName'

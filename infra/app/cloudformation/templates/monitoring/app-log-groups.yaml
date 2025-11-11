@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Application CloudWatch Log Groups - App Account Application Logs'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (dev, staging, production)'
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Default: dev
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  LogRetentionDays:
+    Type: Number
+    Description: 'Log retention days for application logs'
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+Resources:
+  # ==========================================================================
+  # ECS Service Log Groups (Application Logs)
+  # ==========================================================================
+  ProviderBackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ecs/${ProjectName}-${EnvironmentName}-provider-backend'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-provider-backend-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: provider-backend
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  StaffBackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ecs/${ProjectName}-${EnvironmentName}-staff-backend'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-staff-backend-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: staff-backend
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  BatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ecs/${ProjectName}-${EnvironmentName}-batch'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-batch-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: batch
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # RDS MySQL Log Groups (Database Logs)
+  # ==========================================================================
+  RDSErrorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/rds/instance/${ProjectName}-${EnvironmentName}/error'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-error-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: rds-mysql
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RDSSlowQueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/rds/instance/${ProjectName}-${EnvironmentName}/slowquery'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-slowquery-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: rds-mysql
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  RDSGeneralLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/rds/instance/${ProjectName}-${EnvironmentName}/general'
+      RetentionInDays: 7  # General logs are verbose, shorter retention
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-rds-general-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: rds-mysql
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # ALB Access Logs (Stored in S3, but define log group for filtering)
+  # ==========================================================================
+  ALBLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/alb/${ProjectName}-${EnvironmentName}'
+      RetentionInDays: !Ref LogRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-alb-logs'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Service
+          Value: alb
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  ProviderBackendLogGroupArn:
+    Description: 'Provider Backend Log Group ARN'
+    Value: !GetAtt ProviderBackendLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ProviderBackendLogGroupArn'
+
+  ProviderBackendLogGroupName:
+    Description: 'Provider Backend Log Group Name'
+    Value: !Ref ProviderBackendLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ProviderBackendLogGroupName'
+
+  StaffBackendLogGroupArn:
+    Description: 'Staff Backend Log Group ARN'
+    Value: !GetAtt StaffBackendLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-StaffBackendLogGroupArn'
+
+  StaffBackendLogGroupName:
+    Description: 'Staff Backend Log Group Name'
+    Value: !Ref StaffBackendLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-StaffBackendLogGroupName'
+
+  BatchLogGroupArn:
+    Description: 'Batch Log Group ARN'
+    Value: !GetAtt BatchLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-BatchLogGroupArn'
+
+  BatchLogGroupName:
+    Description: 'Batch Log Group Name'
+    Value: !Ref BatchLogGroup
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-BatchLogGroupName'
+
+  RDSErrorLogGroupArn:
+    Description: 'RDS Error Log Group ARN'
+    Value: !GetAtt RDSErrorLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-RDSErrorLogGroupArn'
+
+  RDSSlowQueryLogGroupArn:
+    Description: 'RDS Slow Query Log Group ARN'
+    Value: !GetAtt RDSSlowQueryLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-RDSSlowQueryLogGroupArn'
+
+  RDSGeneralLogGroupArn:
+    Description: 'RDS General Log Group ARN'
+    Value: !GetAtt RDSGeneralLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-RDSGeneralLogGroupArn'
+
+  ALBLogGroupArn:
+    Description: 'ALB Log Group ARN'
+    Value: !GetAtt ALBLogGroup.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ALBLogGroupArn'

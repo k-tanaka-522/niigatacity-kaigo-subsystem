@@ -35,12 +35,72 @@ CHANGESET_NAME=$2
 # AWS リージョン設定
 AWS_REGION=${AWS_REGION:-ap-northeast-1}
 
+# 環境を推定（Stack名から）
+ENVIRONMENT="dev"
+if [[ "${STACK_NAME}" == *"-staging-"* ]]; then
+  ENVIRONMENT="staging"
+elif [[ "${STACK_NAME}" == *"-production-"* ]] || [[ "${STACK_NAME}" == *"-prod-"* ]]; then
+  ENVIRONMENT="production"
+fi
+
+# 環境ごとのAWS Profileを設定
+get_aws_profile() {
+  local environment=$1
+  case "${environment}" in
+    production)
+      echo "niigata-kaigo-prod"
+      ;;
+    staging)
+      echo "niigata-kaigo-stg"
+      ;;
+    dev)
+      echo "default"
+      ;;
+    *)
+      echo "default"
+      ;;
+  esac
+}
+
+AWS_PROFILE=$(get_aws_profile "${ENVIRONMENT}")
+export AWS_PROFILE
+
+# ログディレクトリの作成
+LOG_DIR="logs/deployments"
+mkdir -p "${LOG_DIR}"
+
+# ログファイル名
+LOG_FILE="${LOG_DIR}/${STACK_NAME}-$(date +%Y%m%d-%H%M%S).log"
+
+# ログ出力関数
+log() {
+  echo "$@" | tee -a "${LOG_FILE}"
+}
+
+log "========================================"
+log "CloudFormation Change Set 実行"
+log "========================================"
+log "Timestamp: $(date '+%Y-%m-%d %H:%M:%S')"
+log "Executor: ${USER}"
+log "Stack: ${STACK_NAME}"
+log "Change Set: ${CHANGESET_NAME}"
+log "Environment: ${ENVIRONMENT}"
+log "AWS Profile: ${AWS_PROFILE}"
+log "Account ID: $(aws sts get-caller-identity --query Account --output text)"
+log "Region: ${AWS_REGION}"
+log "Log File: ${LOG_FILE}"
+log ""
+
 echo "========================================"
 echo "CloudFormation Change Set 実行"
 echo "========================================"
 echo "Stack: ${STACK_NAME}"
 echo "Change Set: ${CHANGESET_NAME}"
+echo "Environment: ${ENVIRONMENT}"
+echo "AWS Profile: ${AWS_PROFILE}"
+echo "Account ID: $(aws sts get-caller-identity --query Account --output text)"
 echo "Region: ${AWS_REGION}"
+echo "Log File: ${LOG_FILE}"
 echo ""
 
 # Change Set の状態を確認

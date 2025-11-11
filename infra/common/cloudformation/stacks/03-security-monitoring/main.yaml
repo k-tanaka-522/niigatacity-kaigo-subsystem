@@ -1,0 +1,265 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Common Account Security Monitoring Stack - Organization-wide Audit, Compliance, Threat Detection'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'Environment Configuration'
+        Parameters:
+          - EnvironmentName
+          - ProjectName
+      - Label:
+          default: 'Alert Configuration'
+        Parameters:
+          - SecurityAlertEmailAddress
+          - SlackWebhookUrl
+      - Label:
+          default: 'Log Retention Configuration'
+        Parameters:
+          - CloudTrailRetentionDays
+      - Label:
+          default: 'Security Service Configuration'
+        Parameters:
+          - EnableDataEvents
+          - EnableSecurityHub
+      - Label:
+          default: 'Template Storage'
+        Parameters:
+          - TemplateBucketName
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  SecurityAlertEmailAddress:
+    Type: String
+    Description: 'Email address for security alerts'
+    Default: security-alerts@niigata-city.lg.jp
+
+  SlackWebhookUrl:
+    Type: String
+    Description: 'Slack Webhook URL for security alerts'
+    Default: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+    NoEcho: true
+
+  CloudTrailRetentionDays:
+    Type: Number
+    Description: 'CloudTrail log retention days (GCAS requirement: 7 years = 2555 days)'
+    Default: 2555
+    MinValue: 2555
+
+  EnableDataEvents:
+    Type: String
+    Description: 'Enable CloudTrail data events (S3 object-level, Lambda execution)'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  EnableSecurityHub:
+    Type: String
+    Description: 'Enable Security Hub compliance checking'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  TemplateBucketName:
+    Type: String
+    Description: 'S3 bucket name for nested stack templates'
+    Default: niigata-kaigo-cfn-templates-production
+
+Resources:
+  # ==========================================================================
+  # Security Log Buckets (Foundation)
+  # ==========================================================================
+  SecurityLogBucketsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/common/templates/storage/security-log-buckets.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        CloudTrailRetentionDays: !Ref CloudTrailRetentionDays
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-security-log-buckets-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AccountType
+          Value: common
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # Security SNS Topics (Foundation)
+  # ==========================================================================
+  SecuritySNSTopicsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/common/templates/monitoring/security-sns-topics.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        SecurityAlertEmailAddress: !Ref SecurityAlertEmailAddress
+        SlackWebhookUrl: !Ref SlackWebhookUrl
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-security-sns-topics-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AccountType
+          Value: common
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # CloudTrail (Organization-wide Audit Logging)
+  # ==========================================================================
+  CloudTrailStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - SecurityLogBucketsStack
+      - SecuritySNSTopicsStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/common/templates/audit/cloudtrail.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        AuditLogsBucketName: !GetAtt SecurityLogBucketsStack.Outputs.AuditLogsBucketName
+        SecurityAlertTopicArn: !GetAtt SecuritySNSTopicsStack.Outputs.SecurityAlertTopicArn
+        EnableDataEvents: !Ref EnableDataEvents
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-cloudtrail-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AccountType
+          Value: common
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # AWS Config (Organization-wide Configuration Tracking)
+  # ==========================================================================
+  AWSConfigStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - SecurityLogBucketsStack
+      - SecuritySNSTopicsStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/common/templates/audit/aws-config.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        ConfigLogsBucketName: !GetAtt SecurityLogBucketsStack.Outputs.ConfigLogsBucketName
+        ComplianceAlertTopicArn: !GetAtt SecuritySNSTopicsStack.Outputs.ComplianceAlertTopicArn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-aws-config-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AccountType
+          Value: common
+        - Key: Compliance
+          Value: GCAS
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # GuardDuty & Security Hub (Threat Detection & Compliance Management)
+  # ==========================================================================
+  GuardDutySecurityHubStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: SecuritySNSTopicsStack
+    Properties:
+      TemplateURL: !Sub 'https://s3.amazonaws.com/${TemplateBucketName}/common/templates/security/guardduty-securityhub.yaml'
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ProjectName: !Ref ProjectName
+        SecurityAlertTopicArn: !GetAtt SecuritySNSTopicsStack.Outputs.SecurityAlertTopicArn
+        EnableSecurityHub: !Ref EnableSecurityHub
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-guardduty-securityhub-stack'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AccountType
+          Value: common
+        - Key: ManagedBy
+          Value: CloudFormation
+
+Outputs:
+  # Log Buckets
+  AuditLogsBucketName:
+    Description: 'CloudTrail Audit Logs S3 Bucket Name (Organization-wide)'
+    Value: !GetAtt SecurityLogBucketsStack.Outputs.AuditLogsBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-AuditLogsBucketName'
+
+  ConfigLogsBucketName:
+    Description: 'AWS Config Logs S3 Bucket Name (Organization-wide)'
+    Value: !GetAtt SecurityLogBucketsStack.Outputs.ConfigLogsBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigLogsBucketName'
+
+  WAFLogsBucketName:
+    Description: 'WAF Logs S3 Bucket Name (Organization-wide)'
+    Value: !GetAtt SecurityLogBucketsStack.Outputs.WAFLogsBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-WAFLogsBucketName'
+
+  # SNS Topics
+  SecurityAlertTopicArn:
+    Description: 'Security Alert SNS Topic ARN (Organization-wide)'
+    Value: !GetAtt SecuritySNSTopicsStack.Outputs.SecurityAlertTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-SecurityAlertTopicArn'
+
+  ComplianceAlertTopicArn:
+    Description: 'Compliance Alert SNS Topic ARN (Organization-wide)'
+    Value: !GetAtt SecuritySNSTopicsStack.Outputs.ComplianceAlertTopicArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ComplianceAlertTopicArn'
+
+  # Audit Services
+  CloudTrailArn:
+    Description: 'Organization CloudTrail ARN'
+    Value: !GetAtt CloudTrailStack.Outputs.OrganizationTrailArn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-OrganizationTrailArn'
+
+  ConfigRecorderName:
+    Description: 'AWS Config Recorder Name'
+    Value: !GetAtt AWSConfigStack.Outputs.ConfigRecorderName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigRecorderName'
+
+  GuardDutyDetectorId:
+    Description: 'GuardDuty Detector ID'
+    Value: !GetAtt GuardDutySecurityHubStack.Outputs.GuardDutyDetectorId
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-GuardDutyDetectorId'

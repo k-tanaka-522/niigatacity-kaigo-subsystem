@@ -1,0 +1,295 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Config - Organization-wide Resource Configuration Tracking (Common Account)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  ConfigLogsBucketName:
+    Type: String
+    Description: 'S3 bucket name for AWS Config logs'
+
+  ComplianceAlertTopicArn:
+    Type: String
+    Description: 'SNS Topic ARN for compliance alerts'
+
+Resources:
+  # ==========================================================================
+  # IAM Role for AWS Config
+  # ==========================================================================
+  ConfigRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${EnvironmentName}-config-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/ConfigRole
+      Policies:
+        - PolicyName: ConfigS3Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${ConfigLogsBucketName}'
+                  - !Sub 'arn:aws:s3:::${ConfigLogsBucketName}/*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref ComplianceAlertTopicArn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-config-role'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================================
+  # AWS Config Recorder (Organization-wide)
+  # ==========================================================================
+  ConfigRecorder:
+    Type: AWS::Config::ConfigurationRecorder
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-config-recorder'
+      RoleArn: !GetAtt ConfigRole.Arn
+      RecordingGroup:
+        AllSupported: true
+        IncludeGlobalResourceTypes: true
+
+  # ==========================================================================
+  # AWS Config Delivery Channel
+  # ==========================================================================
+  ConfigDeliveryChannel:
+    Type: AWS::Config::DeliveryChannel
+    Properties:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-config-delivery'
+      S3BucketName: !Ref ConfigLogsBucketName
+      SnsTopicARN: !Ref ComplianceAlertTopicArn
+      ConfigSnapshotDeliveryProperties:
+        DeliveryFrequency: TwentyFour_Hours
+
+  # ==========================================================================
+  # AWS Config Rules (14 Rules for GCAS Compliance)
+  # ==========================================================================
+
+  # 1. Encryption at Rest
+  RDSEncryptionRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: rds-storage-encrypted
+      Description: 'Checks whether RDS instances have encryption at rest enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: RDS_STORAGE_ENCRYPTED
+
+  EBSEncryptionRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: encrypted-volumes
+      Description: 'Checks whether EBS volumes are encrypted'
+      Source:
+        Owner: AWS
+        SourceIdentifier: ENCRYPTED_VOLUMES
+
+  S3BucketEncryptionRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: s3-bucket-server-side-encryption-enabled
+      Description: 'Checks whether S3 buckets have server-side encryption enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED
+
+  # 2. Public Access Control
+  S3PublicAccessBlockRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: s3-account-level-public-access-blocks
+      Description: 'Checks whether S3 account-level public access blocks are enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS
+
+  EC2PublicIPRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: ec2-instance-no-public-ip
+      Description: 'Checks whether EC2 instances have a public IP address'
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_INSTANCE_NO_PUBLIC_IP
+
+  # 3. Network Security
+  SecurityGroupRuleRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: restricted-ssh
+      Description: 'Checks whether security groups allow unrestricted SSH access (0.0.0.0/0)'
+      Source:
+        Owner: AWS
+        SourceIdentifier: INCOMING_SSH_DISABLED
+
+  SecurityGroupRDPRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: restricted-rdp
+      Description: 'Checks whether security groups allow unrestricted RDP access (0.0.0.0/0)'
+      Source:
+        Owner: AWS
+        SourceIdentifier: RESTRICTED_INCOMING_TRAFFIC
+      InputParameters:
+        blockedPort1: '3389'
+
+  VPCFlowLogsRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: vpc-flow-logs-enabled
+      Description: 'Checks whether VPC Flow Logs are enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: VPC_FLOW_LOGS_ENABLED
+
+  # 4. IAM & Access Management
+  IAMPasswordPolicyRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: iam-password-policy
+      Description: 'Checks whether IAM password policy meets GCAS requirements'
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_PASSWORD_POLICY
+      InputParameters:
+        RequireUppercaseCharacters: true
+        RequireLowercaseCharacters: true
+        RequireNumbers: true
+        RequireSymbols: true
+        MinimumPasswordLength: 14
+        MaxPasswordAge: 90
+
+  MFAEnabledRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: mfa-enabled-for-iam-console-access
+      Description: 'Checks whether MFA is enabled for IAM users with console access'
+      Source:
+        Owner: AWS
+        SourceIdentifier: MFA_ENABLED_FOR_IAM_CONSOLE_ACCESS
+
+  RootAccountMFARule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: root-account-mfa-enabled
+      Description: 'Checks whether root account has MFA enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
+
+  # 5. Logging & Monitoring
+  CloudTrailEnabledRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: cloudtrail-enabled
+      Description: 'Checks whether CloudTrail is enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENABLED
+
+  CloudTrailLogValidationRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: cloud-trail-log-file-validation-enabled
+      Description: 'Checks whether CloudTrail log file validation is enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_LOG_FILE_VALIDATION_ENABLED
+
+  # 6. Backup & DR
+  RDSBackupEnabledRule:
+    Type: AWS::Config::ConfigRule
+    DependsOn: ConfigRecorder
+    Properties:
+      ConfigRuleName: db-backup-enabled
+      Description: 'Checks whether RDS automated backups are enabled'
+      Source:
+        Owner: AWS
+        SourceIdentifier: DB_BACKUP_ENABLED
+
+  # ==========================================================================
+  # Auto Remediation (Optional - for non-critical rules)
+  # ==========================================================================
+  S3PublicAccessBlockRemediation:
+    Type: AWS::Config::RemediationConfiguration
+    Properties:
+      ConfigRuleName: !Ref S3PublicAccessBlockRule
+      TargetType: SSM_DOCUMENT
+      TargetIdentifier: AWS-PublishSNSNotification
+      TargetVersion: '1'
+      Parameters:
+        AutomationAssumeRole:
+          StaticValue:
+            Values:
+              - !GetAtt ConfigRole.Arn
+        TopicArn:
+          StaticValue:
+            Values:
+              - !Ref ComplianceAlertTopicArn
+        Message:
+          StaticValue:
+            Values:
+              - 'S3 bucket public access block is not configured. Please remediate manually.'
+      Automatic: false
+      MaximumAutomaticAttempts: 5
+      RetryAttemptSeconds: 60
+
+Outputs:
+  ConfigRecorderName:
+    Description: 'AWS Config Recorder Name'
+    Value: !Ref ConfigRecorder
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigRecorderName'
+
+  ConfigRoleArn:
+    Description: 'AWS Config IAM Role ARN'
+    Value: !GetAtt ConfigRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ConfigRoleArn'
+
+  ConfigRulesCount:
+    Description: 'Number of AWS Config Rules deployed'
+    Value: 14

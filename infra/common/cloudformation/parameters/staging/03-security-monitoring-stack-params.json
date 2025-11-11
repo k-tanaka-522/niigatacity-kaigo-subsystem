@@ -1,0 +1,34 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "staging"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "SecurityAlertEmailAddress",
+    "ParameterValue": "security-alerts-staging@example.com"
+  },
+  {
+    "ParameterKey": "SlackWebhookUrl",
+    "ParameterValue": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  },
+  {
+    "ParameterKey": "CloudTrailRetentionDays",
+    "ParameterValue": "2555"
+  },
+  {
+    "ParameterKey": "EnableDataEvents",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableSecurityHub",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-common"
+  }
+]

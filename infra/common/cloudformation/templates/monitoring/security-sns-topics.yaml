@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security SNS Topics - Organization-wide Security Alerts (Common Account)'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Description: 'Environment name (production, staging)'
+    AllowedValues:
+      - production
+      - staging
+    Default: production
+
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+    Default: niigata-kaigo
+
+  SecurityAlertEmailAddress:
+    Type: String
+    Description: 'Email address for security alerts'
+    Default: security-alerts@niigata-city.lg.jp
+
+  SlackWebhookUrl:
+    Type: String
+    Description: 'Slack Webhook URL for security alerts'
+    Default: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
+    NoEcho: true
+
+Resources:
+  # ==========================================================================
+  # Security Alert Topic (Organization-wide)
+  # ==========================================================================
+  SecurityAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-security-alerts'
+      DisplayName: !Sub '[${EnvironmentName}] Security Alerts'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-security-alerts'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AlertType
+          Value: Security
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  SecurityAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SecurityAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchEvents
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref SecurityAlertTopic
+          - Sid: AllowGuardDuty
+            Effect: Allow
+            Principal:
+              Service: guardduty.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref SecurityAlertTopic
+          - Sid: AllowSecurityHub
+            Effect: Allow
+            Principal:
+              Service: securityhub.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref SecurityAlertTopic
+          - Sid: AllowCloudTrail
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref SecurityAlertTopic
+          - Sid: AllowConfig
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref SecurityAlertTopic
+
+  SecurityAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref SecurityAlertTopic
+      Endpoint: !Ref SecurityAlertEmailAddress
+
+  # ==========================================================================
+  # Compliance Alert Topic (AWS Config Compliance Changes)
+  # ==========================================================================
+  ComplianceAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-${EnvironmentName}-compliance-alerts'
+      DisplayName: !Sub '[${EnvironmentName}] Compliance Alerts'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${EnvironmentName}-compliance-alerts'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: AlertType
+          Value: Compliance
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  ComplianceAlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref ComplianceAlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowConfig
+            Effect: Allow
+            Principal:
+              Service: config.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref ComplianceAlertTopic
+          - Sid: AllowCloudWatchEvents
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref ComplianceAlertTopic
+
+  ComplianceAlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref ComplianceAlertTopic
+      Endpoint: !Ref SecurityAlertEmailAddress
+
+Outputs:
+  SecurityAlertTopicArn:
+    Description: 'Security Alert SNS Topic ARN'
+    Value: !Ref SecurityAlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-SecurityAlertTopicArn'
+
+  SecurityAlertTopicName:
+    Description: 'Security Alert SNS Topic Name'
+    Value: !GetAtt SecurityAlertTopic.TopicName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-SecurityAlertTopicName'
+
+  ComplianceAlertTopicArn:
+    Description: 'Compliance Alert SNS Topic ARN'
+    Value: !Ref ComplianceAlertTopic
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ComplianceAlertTopicArn'
+
+  ComplianceAlertTopicName:
+    Description: 'Compliance Alert SNS Topic Name'
+    Value: !GetAtt ComplianceAlertTopic.TopicName
+    Export:
+      Name: !Sub '${ProjectName}-${EnvironmentName}-ComplianceAlertTopicName'

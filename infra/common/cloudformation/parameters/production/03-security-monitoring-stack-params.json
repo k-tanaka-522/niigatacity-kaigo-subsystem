@@ -1,0 +1,34 @@
+[
+  {
+    "ParameterKey": "EnvironmentName",
+    "ParameterValue": "production"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "niigata-kaigo"
+  },
+  {
+    "ParameterKey": "SecurityAlertEmailAddress",
+    "ParameterValue": "security-alerts@niigata-city.lg.jp"
+  },
+  {
+    "ParameterKey": "SlackWebhookUrl",
+    "ParameterValue": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  },
+  {
+    "ParameterKey": "CloudTrailRetentionDays",
+    "ParameterValue": "2555"
+  },
+  {
+    "ParameterKey": "EnableDataEvents",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableSecurityHub",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "TemplateBucketName",
+    "ParameterValue": "niigata-kaigo-cfn-templates-production"
+  }
+]
